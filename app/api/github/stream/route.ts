@@ -1,7 +1,6 @@
-// SSE Discovery — 30 parallel queries to find thousands of developers
-import { NextRequest } from 'next/server';
+// SSE Discovery — parallel queries to find developers, upsert directly to Supabase
 import { githubFetch } from '@/lib/githubTokens';
-import { getAllStoredUsernames } from '@/lib/firestore';
+import { getAllStoredLogins, upsertUser, recalculateRanks } from '@/lib/supabaseDb';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,41 +11,35 @@ interface SearchQuery {
 }
 
 const SEARCH_QUERIES: SearchQuery[] = [
-  // Follower brackets
-  { q: 'followers:>100000', label: 'followers>100k', maxPages: 3 },
-  { q: 'followers:50000..100000', label: 'followers50k-100k', maxPages: 3 },
-  { q: 'followers:20000..50000', label: 'followers20k-50k', maxPages: 5 },
-  { q: 'followers:10000..20000', label: 'followers10k-20k', maxPages: 5 },
-  { q: 'followers:5000..10000', label: 'followers5k-10k', maxPages: 5 },
-  { q: 'followers:2000..5000', label: 'followers2k-5k', maxPages: 5 },
-  { q: 'followers:1000..2000', label: 'followers1k-2k', maxPages: 5 },
-  { q: 'followers:500..1000', label: 'followers500-1k', maxPages: 5 },
-  { q: 'followers:200..500', label: 'followers200-500', maxPages: 3 },
-  { q: 'followers:100..200', label: 'followers100-200', maxPages: 3 },
-  // Language-specific
-  { q: 'language:javascript followers:>200', label: 'lang-js', maxPages: 3 },
-  { q: 'language:typescript followers:>200', label: 'lang-ts', maxPages: 3 },
-  { q: 'language:python followers:>200', label: 'lang-py', maxPages: 3 },
-  { q: 'language:rust followers:>200', label: 'lang-rust', maxPages: 3 },
-  { q: 'language:go followers:>200', label: 'lang-go', maxPages: 3 },
-  { q: 'language:ruby followers:>200', label: 'lang-ruby', maxPages: 3 },
-  { q: 'language:java followers:>200', label: 'lang-java', maxPages: 3 },
-  { q: 'language:cpp followers:>200', label: 'lang-cpp', maxPages: 3 },
-  { q: 'language:swift followers:>200', label: 'lang-swift', maxPages: 3 },
-  { q: 'language:kotlin followers:>200', label: 'lang-kotlin', maxPages: 3 },
-  { q: 'language:php followers:>200', label: 'lang-php', maxPages: 3 },
-  { q: 'language:csharp followers:>200', label: 'lang-csharp', maxPages: 3 },
-  // Repo count
-  { q: 'repos:>500', label: 'repos>500', maxPages: 3 },
-  { q: 'repos:200..500', label: 'repos200-500', maxPages: 3 },
-  { q: 'repos:100..200', label: 'repos100-200', maxPages: 3 },
-  // Rising stars
-  { q: 'followers:>500 created:>2022-01-01', label: 'rising-2022', maxPages: 3 },
-  { q: 'followers:>200 created:>2023-01-01', label: 'rising-2023', maxPages: 3 },
-  { q: 'followers:>100 created:>2024-01-01', label: 'rising-2024', maxPages: 3 },
-  // Organizations
-  { q: 'type:org followers:>5000', label: 'org-big', maxPages: 2 },
-  { q: 'type:org followers:1000..5000', label: 'org-mid', maxPages: 2 },
+  { q: 'followers:>100000 type:user', label: 'followers>100k', maxPages: 3 },
+  { q: 'followers:50000..100000 type:user', label: 'followers50k-100k', maxPages: 3 },
+  { q: 'followers:20000..50000 type:user', label: 'followers20k-50k', maxPages: 5 },
+  { q: 'followers:10000..20000 type:user', label: 'followers10k-20k', maxPages: 5 },
+  { q: 'followers:5000..10000 type:user', label: 'followers5k-10k', maxPages: 5 },
+  { q: 'followers:2000..5000 type:user', label: 'followers2k-5k', maxPages: 5 },
+  { q: 'followers:1000..2000 type:user', label: 'followers1k-2k', maxPages: 5 },
+  { q: 'followers:500..1000 type:user', label: 'followers500-1k', maxPages: 5 },
+  { q: 'followers:200..500 type:user', label: 'followers200-500', maxPages: 3 },
+  { q: 'followers:100..200 type:user', label: 'followers100-200', maxPages: 3 },
+  { q: 'language:javascript followers:>200 type:user', label: 'lang-js', maxPages: 3 },
+  { q: 'language:typescript followers:>150 type:user', label: 'lang-ts', maxPages: 3 },
+  { q: 'language:python followers:>300 type:user', label: 'lang-py', maxPages: 3 },
+  { q: 'language:rust followers:>80 type:user', label: 'lang-rust', maxPages: 3 },
+  { q: 'language:go followers:>150 type:user', label: 'lang-go', maxPages: 3 },
+  { q: 'language:ruby followers:>150 type:user', label: 'lang-ruby', maxPages: 3 },
+  { q: 'language:java followers:>150 type:user', label: 'lang-java', maxPages: 3 },
+  { q: 'language:cpp followers:>80 type:user', label: 'lang-cpp', maxPages: 3 },
+  { q: 'language:csharp followers:>80 type:user', label: 'lang-csharp', maxPages: 3 },
+  { q: 'language:swift followers:>80 type:user', label: 'lang-swift', maxPages: 3 },
+  { q: 'language:kotlin followers:>60 type:user', label: 'lang-kotlin', maxPages: 3 },
+  { q: 'language:php followers:>150 type:user', label: 'lang-php', maxPages: 3 },
+  { q: 'language:shell followers:>100 type:user', label: 'lang-shell', maxPages: 3 },
+  { q: 'language:html followers:>100 type:user', label: 'lang-html', maxPages: 3 },
+  { q: 'repos:>200 followers:>50 type:user', label: 'repos>200', maxPages: 3 },
+  { q: 'repos:>100 followers:>100 type:user', label: 'repos>100', maxPages: 3 },
+  { q: 'followers:>300 created:>2022-01-01 type:user', label: 'rising-2022', maxPages: 3 },
+  { q: 'followers:>100 created:>2023-01-01 type:user', label: 'rising-2023', maxPages: 3 },
+  { q: 'repos:>50 followers:>50 pushed:>2025-01-01 type:user', label: 'recent-active', maxPages: 3 },
 ];
 
 async function searchUsers(searchQuery: SearchQuery): Promise<string[]> {
@@ -60,6 +53,7 @@ async function searchUsers(searchQuery: SearchQuery): Promise<string[]> {
       const data = await res.json();
       if (!data.items || data.items.length === 0) break;
       for (const item of data.items) {
+        if (item.type !== 'User') continue;
         logins.push(item.login);
       }
     } catch {
@@ -69,22 +63,38 @@ async function searchUsers(searchQuery: SearchQuery): Promise<string[]> {
   return logins;
 }
 
-async function fetchProfile(login: string): Promise<Record<string, unknown> | null> {
-  try {
-    const [userRes, reposRes, eventsRes] = await Promise.all([
-      githubFetch(`https://api.github.com/users/${encodeURIComponent(login)}`),
-      githubFetch(`https://api.github.com/users/${encodeURIComponent(login)}/repos?per_page=100&sort=updated`),
-      githubFetch(`https://api.github.com/users/${encodeURIComponent(login)}/events/public?per_page=100`),
-    ]);
+interface ProfileData {
+  login: string; name: string; avatarUrl: string; bio: string;
+  location: string; company: string; publicRepos: number; followers: number;
+  following: number; githubCreatedAt: string; totalStars: number; totalForks: number;
+  topLanguage: string; estimatedCommits: number; recentActivity: number;
+  totalScore: number; topRepos: { name: string; stars: number; forks: number; language: string; description: string; url: string }[];
+}
 
+async function fetchProfile(login: string): Promise<ProfileData | null> {
+  try {
+    const userRes = await githubFetch(`https://api.github.com/users/${encodeURIComponent(login)}`, {
+      signal: AbortSignal.timeout(8000),
+    });
     if (!userRes.ok) return null;
     const user = await userRes.json();
-    const repos = reposRes.ok ? await reposRes.json() : [];
-    const events = eventsRes.ok ? await eventsRes.json() : [];
+    if (user.type !== 'User') return null;
+    if ((user.public_repos ?? 0) === 0 && (user.followers ?? 0) === 0) return null;
+
+    const [reposResult, eventsResult] = await Promise.allSettled([
+      githubFetch(`https://api.github.com/users/${encodeURIComponent(login)}/repos?per_page=100&sort=updated`, {
+        signal: AbortSignal.timeout(7000),
+      }).then((response) => (response.ok ? response.json() : [])),
+      githubFetch(`https://api.github.com/users/${encodeURIComponent(login)}/events/public?per_page=100`, {
+        signal: AbortSignal.timeout(7000),
+      }).then((response) => (response.ok ? response.json() : [])),
+    ]);
+
+    const repos = reposResult.status === 'fulfilled' ? reposResult.value : [];
+    const events = eventsResult.status === 'fulfilled' ? eventsResult.value : [];
 
     let totalStars = 0, totalForks = 0;
     const langCount: Record<string, number> = {};
-    const languages: string[] = [];
     const topRepos: { name: string; stars: number; forks: number; language: string | null; description: string | null; url: string }[] = [];
 
     if (Array.isArray(repos)) {
@@ -93,7 +103,6 @@ async function fetchProfile(login: string): Promise<Record<string, unknown> | nu
         totalForks += repo.forks_count || 0;
         if (repo.language) {
           langCount[repo.language] = (langCount[repo.language] || 0) + 1;
-          if (!languages.includes(repo.language)) languages.push(repo.language);
         }
       }
       const sorted = [...repos].sort((a: { stargazers_count: number }, b: { stargazers_count: number }) => b.stargazers_count - a.stargazers_count);
@@ -127,28 +136,28 @@ async function fetchProfile(login: string): Promise<Record<string, unknown> | nu
     estimatedCommits = Math.round(estimatedCommits * 3.5);
     recentActivity = Math.min(recentActivity, 100);
 
-    const totalScore =
+    const totalScore = Math.round(
       estimatedCommits * 3 + totalStars * 2 + (user.followers || 0) * 1 +
-      (user.public_repos || 0) * 0.5 + recentActivity * 10;
+      (user.public_repos || 0) * 0.5 + recentActivity * 10
+    );
 
     return {
       login: user.login,
-      name: user.name,
-      avatarUrl: user.avatar_url,
-      bio: user.bio,
-      location: user.location,
-      company: user.company,
+      name: user.name || '',
+      avatarUrl: user.avatar_url || '',
+      bio: user.bio || '',
+      location: user.location || '',
+      company: user.company || '',
       publicRepos: user.public_repos || 0,
       followers: user.followers || 0,
       following: user.following || 0,
-      createdAt: user.created_at,
+      githubCreatedAt: user.created_at || '',
       totalStars,
       totalForks,
       topLanguage,
       estimatedCommits,
       recentActivity,
-      topRepos,
-      languages,
+      topRepos: topRepos.map(r => ({ ...r, language: r.language || '', description: r.description || '' })),
       totalScore,
     };
   } catch {
@@ -156,7 +165,7 @@ async function fetchProfile(login: string): Promise<Record<string, unknown> | nu
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const encoder = new TextEncoder();
   const seen = new Set<string>();
 
@@ -168,15 +177,14 @@ export async function GET(request: NextRequest) {
 
       send({ type: 'status', message: 'Loading stored users...', total: SEARCH_QUERIES.length });
 
-      // Load already-stored usernames to avoid re-fetching from GitHub
-      let storedUsernames = new Set<string>();
+      let storedLogins = new Set<string>();
       try {
-        storedUsernames = await getAllStoredUsernames();
+        storedLogins = await getAllStoredLogins();
       } catch {
-        // If Firebase read fails, proceed without dedup
+        // proceed without dedup
       }
 
-      send({ type: 'status', message: `Starting discovery (${storedUsernames.size} already stored)...`, total: SEARCH_QUERIES.length });
+      send({ type: 'status', message: `Starting discovery (${storedLogins.size} already stored)...`, total: SEARCH_QUERIES.length });
 
       // Run all searches in parallel
       const searchResults = await Promise.allSettled(
@@ -184,11 +192,11 @@ export async function GET(request: NextRequest) {
       );
 
       const allLogins: string[] = [];
-      searchResults.forEach((result, i) => {
+      searchResults.forEach((result) => {
         if (result.status === 'fulfilled') {
           for (const login of result.value) {
             const key = login.toLowerCase();
-            if (!seen.has(key) && !storedUsernames.has(key)) {
+            if (!seen.has(key) && !storedLogins.has(key)) {
               seen.add(key);
               allLogins.push(login);
             }
@@ -196,23 +204,42 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      send({ type: 'status', message: `Found ${allLogins.length} new users (skipped ${storedUsernames.size} stored), fetching profiles...` });
+      send({ type: 'status', message: `Found ${allLogins.length} new users (skipped ${storedLogins.size} stored), fetching profiles...` });
 
-      // Fetch profiles in batches of 5
+      // Fetch profiles in batches of 5 and upsert directly
       let completed = 0;
       for (let i = 0; i < allLogins.length; i += 5) {
         const batch = allLogins.slice(i, i + 5);
         const profiles = await Promise.all(batch.map(fetchProfile));
         for (const profile of profiles) {
-          if (profile) {
-            send({ type: 'user', data: profile });
-            completed++;
-          }
+          if (!profile) continue;
+          try {
+            const saved = await upsertUser({ ...profile, addedBy: 'stream' });
+            if (saved) {
+              send({ type: 'user', data: {
+                login: saved.login,
+                citySlot: saved.citySlot,
+                cityRank: saved.cityRank,
+                topLanguage: saved.topLanguage,
+                totalScore: saved.totalScore,
+                avatarUrl: saved.avatarUrl,
+                estimatedCommits: saved.estimatedCommits,
+                totalStars: saved.totalStars,
+                publicRepos: saved.publicRepos,
+                recentActivity: saved.recentActivity,
+                firstAddedAt: saved.firstAddedAt,
+              } });
+              completed++;
+            }
+          } catch { /* skip */ }
         }
         if (completed % 50 === 0) {
           send({ type: 'progress', completed, total: allLogins.length });
         }
       }
+
+      // Recalculate ranks after all users have been added
+      try { await recalculateRanks(); } catch { /* best effort */ }
 
       send({ type: 'done', total: completed });
       controller.close();

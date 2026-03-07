@@ -1,41 +1,52 @@
-// API: Add or update a user in Firebase city
+// API: Add or update a user in Supabase city
 import { NextRequest, NextResponse } from 'next/server';
-import { addOrUpdateUser } from '@/lib/firestore';
-import { pushLiveEvent } from '@/lib/realtimeDb';
-import { calculateScore } from '@/lib/cityLayout';
-import type { DeveloperProfile } from '@/types';
+import { upsertUser, recalculateRanks } from '@/lib/supabaseDb';
+import { getSupabaseServer } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const profile = body.profile as DeveloperProfile;
-    const addedBy = (body.addedBy as 'discovery' | 'search') || 'search';
-
-    if (!profile || !profile.login) {
-      return NextResponse.json({ error: 'profile required' }, { status: 400 });
+    if (!body || !body.login) {
+      return NextResponse.json({ error: 'login required' }, { status: 400 });
     }
 
-    const totalScore = calculateScore(profile);
-
-    const developer = await addOrUpdateUser({
-      ...profile,
-      login: profile.login.toLowerCase(),
-      totalScore,
-      cityRank: body.cityRank || 0,
-      addedBy,
-      lastUpdatedAt: Date.now(),
+    const saved = await upsertUser({
+      login:            body.login.toLowerCase(),
+      name:             body.name || '',
+      avatarUrl:        body.avatarUrl || '',
+      bio:              body.bio || '',
+      location:         body.location || '',
+      company:          body.company || '',
+      publicRepos:      body.publicRepos || 0,
+      followers:        body.followers || 0,
+      following:        body.following || 0,
+      githubCreatedAt:  body.githubCreatedAt || '',
+      totalStars:       body.totalStars || 0,
+      totalForks:       body.totalForks || 0,
+      topLanguage:      body.topLanguage || 'Unknown',
+      estimatedCommits: body.estimatedCommits || 0,
+      recentActivity:   body.recentActivity || 0,
+      totalScore:       Math.round(body.totalScore || 0),
+      topRepos:         body.topRepos || [],
+      addedBy:          body.addedBy || 'search',
     });
 
-    // Push live event
-    if (!body.skipEvent) {
-      pushLiveEvent({
-        type: 'join',
-        login: developer.login,
-        detail: `Slot #${developer.citySlot}`,
-      });
+    if (!saved) {
+      return NextResponse.json({ error: 'Upsert failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ developer });
+    // Recalculate ranks so the new user gets a proper rank
+    await recalculateRanks();
+
+    // Re-fetch to get the updated rank
+    const sb = getSupabaseServer();
+    const { data: updated } = await sb
+      .from('city_users')
+      .select('*')
+      .eq('login', saved.login)
+      .single();
+
+    return NextResponse.json({ user: updated ? { ...saved, cityRank: updated.city_rank } : saved });
   } catch (error) {
     console.error('Add user error:', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
