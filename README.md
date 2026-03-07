@@ -267,11 +267,7 @@ If you like this project, give it a ⭐ on GitHub!
 
 ## 📄 License
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-
-You are free to use, modify, and distribute this software under the terms of the AGPL-3.0. If you run a modified version on a server that users interact with over a network, you must make the source code of your modified version available to those users.
-
-See the [LICENSE](LICENSE) file for the full license text.
+This project is open source. Feel free to fork, modify, and build upon it.
 
 Required values:
 
