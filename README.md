@@ -1,3 +1,5 @@
+<img width="1536" height="1024" alt="28f6d47e-0a65-4402-9a66-3b04bb1a38a3" src="https://github.com/user-attachments/assets/d565a2b1-e08a-4c02-88e4-fb639fad813b" />
+
 # 🧱 Git World — Every Developer Has a Building
 
 > **A 3D Minecraft-style city where every GitHub developer becomes a building.**
@@ -267,7 +269,11 @@ If you like this project, give it a ⭐ on GitHub!
 
 ## 📄 License
 
-This project is open source. Feel free to fork, modify, and build upon it.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+You are free to use, modify, and distribute this software under the terms of the AGPL-3.0. If you run a modified version on a server that users interact with over a network, you must make the source code of your modified version available to those users.
+
+See the [LICENSE](LICENSE) file for the full license text.
 
 Required values:
 
