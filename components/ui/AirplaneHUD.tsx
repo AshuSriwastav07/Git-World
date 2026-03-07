@@ -19,12 +19,14 @@ export function AirplaneHUD() {
           ✈️ AIRPLANE MODE
         </p>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[6px] text-[#aaa]" style={{ fontFamily: FONT }}>
+          <span>Mouse: Steer</span>
           <span>W/S: Throttle</span>
-          <span>A/D: Turn</span>
-          <span>Q/E: Pitch</span>
+          <span>A/D: Roll</span>
+          <span>Space: Climb</span>
+          <span>Ctrl: Dive</span>
           <span>Shift: Boost</span>
           <span>F: Exit</span>
-          <span>Click: Info</span>
+          <span>Click: Lock</span>
         </div>
       </div>
     </div>
