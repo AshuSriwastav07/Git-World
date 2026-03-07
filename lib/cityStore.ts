@@ -2,92 +2,124 @@
 'use client';
 
 import { create } from 'zustand';
-import type { CityStoreState, CityDeveloper, BuildingData } from '@/types';
-import { GRID_SIZE } from '@/types';
-import { buildBuildingData, slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
+import type { SlimUser } from '@/lib/supabaseDb';
+import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 
-function computeSortedLogins(users: Map<string, CityDeveloper>): string[] {
+interface CityStoreState {
+  users: Map<string, SlimUser>;
+  sortedLogins: string[];
+  isNight: boolean;
+  isAirplaneMode: boolean;
+  isRankChartOpen: boolean;
+  selectedUser: SlimUser | null;
+  isLoading: boolean;
+  loadingProgress: number;
+  loadingMessage: string;
+  flyTarget: { x: number; y: number; z: number } | null;
+  /** Intro stage: 'black' | 'logo' | 'city' | 'burst' | 'buttons' | 'done' */
+  introStage: 'black' | 'logo' | 'city' | 'burst' | 'buttons' | 'done';
+  /** True when user has interacted (clicked/touched/keypress) — stops auto-rotate */
+  userInteracted: boolean;
+
+  addUser: (user: SlimUser) => void;
+  addUsers: (users: SlimUser[]) => void;
+  updateUser: (user: SlimUser) => void;
+  selectUser: (user: SlimUser | null) => void;
+  toggleNight: () => void;
+  toggleAirplaneMode: () => void;
+  setRankChartOpen: (open: boolean) => void;
+  setSelectedUser: (user: SlimUser | null) => void;
+  setLoading: (loading: boolean) => void;
+  setLoadingProgress: (progress: number, message?: string) => void;
+  setFlyTarget: (target: { x: number; y: number; z: number } | null) => void;
+  getUserByLogin: (login: string) => SlimUser | undefined;
+  getTopUsers: (count: number) => SlimUser[];
+  getRandomUser: () => SlimUser | undefined;
+  setIntroStage: (stage: CityStoreState['introStage']) => void;
+  setUserInteracted: () => void;
+}
+
+function computeSortedLogins(users: Map<string, SlimUser>): string[] {
   return Array.from(users.values())
     .sort((a, b) => b.totalScore - a.totalScore)
     .map(u => u.login.toLowerCase());
 }
 
+/* ── Batched addUser buffer ────────────────────────────────────────────── */
+let pendingBuffer: SlimUser[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const BATCH_MS = 400;
+
+function flushPending() {
+  flushTimer = null;
+  if (pendingBuffer.length === 0) return;
+  const batch = pendingBuffer;
+  pendingBuffer = [];
+  useCityStore.getState().addUsers(batch);
+}
+
 export const useCityStore = create<CityStoreState>((set, get) => ({
   users: new Map(),
-  buildings: [],
   sortedLogins: [],
-  gridSize: GRID_SIZE,
-  isNightMode: false,
+  isNight: true,
   isAirplaneMode: false,
   isRankChartOpen: false,
   selectedUser: null,
   isLoading: true,
   loadingProgress: 0,
   loadingMessage: 'Initializing...',
-  flyToTarget: null,
-  firebaseLoaded: 0,
-  newDevsLoaded: 0,
-  initialLoadAt: Date.now(),
+  flyTarget: null,
+  introStage: 'done',
+  userInteracted: false,
 
-  addUser: (user: CityDeveloper) => {
-    set((state) => {
-      const newUsers = new Map(state.users);
-      newUsers.set(user.login.toLowerCase(), user);
-      const totalUsers = newUsers.size;
-      const newBuilding = buildBuildingData(user, totalUsers);
-      const sortedLogins = computeSortedLogins(newUsers);
-      return {
-        users: newUsers,
-        buildings: [...state.buildings.filter(b => b.developer.login !== user.login), newBuilding],
-        sortedLogins,
-      };
-    });
+  addUser: (user: SlimUser) => {
+    pendingBuffer.push(user);
+    if (!flushTimer) flushTimer = setTimeout(flushPending, BATCH_MS);
   },
 
-  addUsers: (users: CityDeveloper[]) => {
+  addUsers: (users: SlimUser[]) => {
     set((state) => {
       const newUsers = new Map(state.users);
       for (const u of users) {
         newUsers.set(u.login.toLowerCase(), u);
       }
-      const totalUsers = newUsers.size;
-      const allBuildings = Array.from(newUsers.values()).map(u => buildBuildingData(u, totalUsers));
       const sortedLogins = computeSortedLogins(newUsers);
-      return { users: newUsers, buildings: allBuildings, sortedLogins };
+      return { users: newUsers, sortedLogins };
     });
   },
 
-  setBuildings: (buildings: BuildingData[]) => set({ buildings }),
+  updateUser: (user: SlimUser) => {
+    set((state) => {
+      const newUsers = new Map(state.users);
+      newUsers.set(user.login.toLowerCase(), user);
+      const sortedLogins = computeSortedLogins(newUsers);
+      return { users: newUsers, sortedLogins };
+    });
+  },
 
-  selectUser: (user: CityDeveloper | null) => {
+  selectUser: (user: SlimUser | null) => {
     set({ selectedUser: user });
     if (user) {
       const pos = slotToWorld(user.citySlot);
       const dims = getBuildingDimensions(user.cityRank, user.citySlot, user);
-      set({ flyToTarget: { x: pos.x, y: dims.height / 2, z: pos.z } });
+      set({ flyTarget: { x: pos.x, y: dims.height / 2, z: pos.z } });
     }
   },
 
-  toggleNightMode: () => set((s) => ({ isNightMode: !s.isNightMode })),
+  toggleNight: () => set((s) => ({ isNight: !s.isNight })),
 
   toggleAirplaneMode: () => set((s) => ({ isAirplaneMode: !s.isAirplaneMode })),
 
   setRankChartOpen: (open: boolean) => set({ isRankChartOpen: open }),
 
-  setSelectedUser: (user: CityDeveloper | null) => set({ selectedUser: user }),
+  setSelectedUser: (user: SlimUser | null) => set({ selectedUser: user }),
 
   setLoading: (loading: boolean) => set({ isLoading: loading }),
 
   setLoadingProgress: (progress: number, message?: string) =>
     set({ loadingProgress: progress, ...(message ? { loadingMessage: message } : {}) }),
 
-  setFlyToTarget: (target) => set({ flyToTarget: target }),
-
-  setFirebaseLoaded: (n: number) => set({ firebaseLoaded: n }),
-
-  setNewDevsLoaded: (n: number) => set({ newDevsLoaded: n }),
-
-  setInitialLoadAt: (t: number) => set({ initialLoadAt: t }),
+  setFlyTarget: (target) => set({ flyTarget: target }),
 
   getUserByLogin: (login: string) => get().users.get(login.toLowerCase()),
 
@@ -101,4 +133,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
     if (all.length === 0) return undefined;
     return all[Math.floor(Math.random() * all.length)];
   },
+
+  setIntroStage: (stage) => set({ introStage: stage }),
+
+  setUserInteracted: () => set({ userInteracted: true }),
 }));

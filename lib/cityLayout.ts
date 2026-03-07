@@ -1,14 +1,14 @@
 // lib/cityLayout.ts — Dense spiral grid centered on (0,0)
 
-import type { CityDeveloper, BuildingData, BuildingTier } from '@/types';
-import { getLanguageColor, GRID_SIZE } from '@/types';
+export const SLOT_PITCH = 5;
+export const BUILDING_SIZE = 3;
+export const GAP = 2;
+export const GRID_SIZE = 145;
 
-export const SLOT_PITCH = 5;    // world units per slot: 3 building + 2 gap
-export const BUILDING_SIZE = 3;  // max building footprint in world units
-export const GAP = 2;            // gap between buildings in world units
+export type BuildingTier = 1 | 2 | 3 | 4 | 5;
 
 // Deterministic pseudo-random based on slot number
-function seededRandom(seed: number): number {
+export function sr(seed: number): number {
   let h = (seed * 2654435761) >>> 0;
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
   h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
@@ -16,104 +16,91 @@ function seededRandom(seed: number): number {
   return (h >>> 0) / 0xffffffff;
 }
 
-/**
- * Convert flat slot index to spiral grid (gx, gz) coordinates.
- * Slot 0 = (0, 0). Spiral grows outward.
- */
-export function slotToGridCoords(slot: number): [number, number] {
+// Slot → spiral grid (gx, gz) coordinates
+function spiralCoords(slot: number): [number, number] {
   if (slot === 0) return [0, 0];
-
-  let x = 0, z = 0, dx = 0, dz = -1;
-  for (let i = 1; i <= slot; i++) {
-    if (x === z || (x < 0 && x === -z) || (x > 0 && x === 1 - z)) {
-      const temp = dx;
-      dx = -dz;
-      dz = temp;
+  let x = 0, z = 0, dx = 1, dz = 0, steps = 1, stepCount = 0, turns = 0;
+  for (let i = 0; i < slot; i++) {
+    x += dx; z += dz; stepCount++;
+    if (stepCount === steps) {
+      stepCount = 0; turns++;
+      const tmp = dx; dx = -dz; dz = tmp;
+      if (turns % 2 === 0) steps++;
     }
-    x += dx;
-    z += dz;
   }
   return [x, z];
 }
 
-/**
- * Convert flat slot index to THREE.js world position.
- * Slot 0 = (0,0). Adjacent slots are SLOT_PITCH apart.
- */
+// Slot → THREE.js world (x, z)
 export function slotToWorld(slot: number): { x: number; z: number } {
-  const [gx, gz] = slotToGridCoords(slot);
-  return {
-    x: gx * SLOT_PITCH,
-    z: gz * SLOT_PITCH,
-  };
+  const [gx, gz] = spiralCoords(slot);
+  return { x: gx * SLOT_PITCH, z: gz * SLOT_PITCH };
 }
 
-/**
- * Building dimensions — height and footprint size (in world units).
- * Width/depth are ALWAYS ≤ BUILDING_SIZE so buildings never overlap.
- */
+// Building height, width, depth, tier
 export function getBuildingDimensions(
   rank: number,
   slot: number,
-  user: { estimatedCommits: number; publicRepos: number; totalStars: number }
+  user: { estimatedCommits?: number; publicRepos?: number; totalStars?: number }
 ): { height: number; width: number; depth: number; tier: BuildingTier } {
-  const r1 = seededRandom(slot * 7 + 1);
-  const r2 = seededRandom(slot * 13 + 2);
-  const r3 = seededRandom(slot * 17 + 3);
+  const r1 = sr(slot * 7 + 1);
+  const r2 = sr(slot * 13 + 2);
+  const r3 = sr(slot * 17 + 3);
 
-  const commitHeight = Math.log10(Math.max(user.estimatedCommits, 10)) * 4;
+  const commits = user.estimatedCommits ?? 100;
+  const commitFactor = Math.log10(Math.max(commits, 10)) / Math.log10(50000);
 
   let height: number, width: number, depth: number, tier: BuildingTier;
 
   if (rank === 1) {
-    tier = 1;
-    height = 70 + Math.round(r1 * 10);
-    width = 2.5; depth = 2.5;
+    tier = 1; height = 78; width = 2.4; depth = 2.4;
   } else if (rank <= 10) {
     tier = 2;
-    height = Math.round(35 + r1 * 20 + commitHeight * 0.3);
-    width = 1.8 + r2 * 1.0;
-    depth = 1.8 + r3 * 1.0;
+    height = Math.round(38 + r1 * 18 + commitFactor * 5);
+    width  = 1.7 + r2 * 0.7;
+    depth  = 1.6 + r3 * 0.7;
   } else if (rank <= 200) {
     tier = 3;
-    height = Math.round(15 + r1 * 18 + commitHeight * 0.2);
-    width = 1.2 + r2 * 1.5;
-    depth = 1.2 + r3 * 1.5;
+    height = Math.round(14 + r1 * 16 + commitFactor * 6);
+    width  = 1.3 + r2 * 1.1;
+    depth  = 1.2 + r3 * 1.1;
   } else if (rank <= 5000) {
     tier = 4;
-    height = Math.round(4 + r1 * 8 + commitHeight * 0.15);
-    height = Math.min(height, 14);
-    width = 0.8 + r2 * 1.8;
-    depth = 0.8 + r3 * 1.8;
+    height = Math.round(4 + r1 * 9 + commitFactor * 3);
+    width  = 0.9 + r2 * 1.3;
+    depth  = 0.8 + r3 * 1.3;
   } else {
     tier = 5;
     height = Math.round(2 + r1 * 3);
-    width = 0.6 + r2 * 1.4;
-    depth = 0.6 + r3 * 1.4;
+    width  = 0.7 + r2 * 0.9;
+    depth  = 0.6 + r3 * 0.9;
   }
 
-  // Cap width/depth so buildings never overlap their slot
-  const maxDim = BUILDING_SIZE - 0.3; // 2.7 max
   return {
     height,
-    width: Math.min(width, maxDim),
-    depth: Math.min(depth, maxDim),
+    width: Math.min(width, 2.5),
+    depth: Math.min(depth, 2.5),
     tier,
   };
 }
 
-/** Tech Park position — fixed offset from city center */
-export function getTechParkWorldCenter(): { x: number; z: number } {
-  return { x: 70, z: -70 };
+// Ground plane size — tight for dense city feel
+export function getGroundSize(userCount: number): number {
+  const radius = Math.ceil(Math.sqrt(userCount)) * SLOT_PITCH * 0.6;
+  // Tighter multiplier: city fills the ground, minimal border
+  const dynamic = radius * 2.0 + Math.sqrt(userCount) * 1.8;
+  // Cover the park area at (-55, 55) but keep tight
+  return Math.max(dynamic, 160);
 }
 
-export function isInTechPark(worldX: number, worldZ: number): boolean {
-  const park = getTechParkWorldCenter();
-  return Math.abs(worldX - park.x) < 25 && Math.abs(worldZ - park.z) < 25;
-}
-
-// ---- Score Calculation ----
-export function calculateScore(dev: Omit<CityDeveloper, 'citySlot' | 'cityRank' | 'totalScore' | 'firstAddedAt' | 'lastUpdatedAt' | 'addedBy'>): number {
+// Score calculation
+export function calculateScore(dev: {
+  estimatedCommits: number;
+  totalStars: number;
+  followers: number;
+  publicRepos: number;
+  recentActivity: number;
+}): number {
   return (
     (dev.estimatedCommits * 3) +
     (dev.totalStars * 2) +
@@ -123,7 +110,7 @@ export function calculateScore(dev: Omit<CityDeveloper, 'citySlot' | 'cityRank' 
   );
 }
 
-// ---- Building Tier ----
+// Building tier from rank
 export function getTier(rank: number): BuildingTier {
   if (rank === 1) return 1;
   if (rank <= 10) return 2;
@@ -132,26 +119,17 @@ export function getTier(rank: number): BuildingTier {
   return 5;
 }
 
-// ---- Build BuildingData (for store compat) ----
-export function buildBuildingData(dev: CityDeveloper, totalUsers: number): BuildingData {
-  const pos = slotToWorld(dev.citySlot);
-  const [gx, gz] = slotToGridCoords(dev.citySlot);
-  const dims = getBuildingDimensions(dev.cityRank, dev.citySlot, dev);
-  const color = getLanguageColor(dev.topLanguage);
-  return {
-    developer: dev,
-    tier: dims.tier,
-    height: dims.height,
-    footprint: dims.width,
-    gridX: gx,
-    gridZ: gz,
-    worldX: pos.x,
-    worldZ: pos.z,
-    color,
-  };
+// Tech park world center — positioned adjacent to the spiral city
+export function getTechParkWorldCenter(): { x: number; z: number } {
+  return { x: -50, z: 50 };
 }
 
-// ---- Height bucket for InstancedMesh grouping ----
-export function heightBucket(height: number): number {
-  return Math.round(height / 2) * 2;
+// Park occupies a 50×50 region; check if a world position falls inside
+const PARK_HALF = 25;
+export function isInsidePark(wx: number, wz: number): boolean {
+  const pc = getTechParkWorldCenter();
+  return (
+    wx >= pc.x - PARK_HALF && wx <= pc.x + PARK_HALF &&
+    wz >= pc.z - PARK_HALF && wz <= pc.z + PARK_HALF
+  );
 }

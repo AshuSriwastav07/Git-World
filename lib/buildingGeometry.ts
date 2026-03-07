@@ -3,7 +3,7 @@
 // Each building emits multiple "mesh spec" boxes that compose its visual shape.
 'use client';
 
-import type { BuildingTier } from '@/types';
+import type { BuildingTier } from '@/lib/cityLayout';
 
 export interface BuildingMeshSpec {
   type: 'body' | 'setback' | 'crown' | 'ledStrip' | 'beacon' | 'antenna' | 'parapet';

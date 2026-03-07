@@ -1,115 +1,172 @@
-// textureGenerator — canvas-based 64×64 building face textures
-// Dark body + neon window grids, cached per key, NearestFilter
-
 import * as THREE from 'three';
-import { getLanguageColor } from '@/types';
 
-const TEX_SIZE = 64;
+export const LANGUAGE_COLORS: Record<string, string> = {
+  JavaScript:  '#f5d020',
+  TypeScript:  '#00b4d8',
+  Python:      '#4cc9f0',
+  Rust:        '#ff6b35',
+  Go:          '#00f5d4',
+  Ruby:        '#ff006e',
+  Java:        '#ffbe0b',
+  'C++':       '#ff48c4',
+  'C#':        '#a855f7',
+  Swift:       '#ff7c43',
+  Kotlin:      '#c77dff',
+  PHP:         '#8338ec',
+  Shell:       '#06d6a0',
+  HTML:        '#ef233c',
+  CSS:         '#4361ee',
+  Vue:         '#2dc653',
+  Dart:        '#00b4d8',
+  default:     '#9b72cf',
+};
+
+export function langColor(language: string): string {
+  return LANGUAGE_COLORS[language] ?? LANGUAGE_COLORS.default;
+}
+
+const ACCENT_POOL = [
+  '#ff006e', '#00f5d4', '#ff6b35', '#4cc9f0',
+  '#a855f7', '#06d6a0', '#f5d020', '#ff48c4',
+  '#00b4d8', '#ef233c', '#c77dff', '#ffbe0b',
+  '#ff4444', '#44ff44', '#ffff44', '#ff88cc',
+  '#ff1493', '#00ff88', '#ffa500', '#ff69b4',
+  '#7fff00', '#00ced1', '#dc143c', '#9400d3',
+];
+
 const cache = new Map<string, THREE.CanvasTexture>();
 
-function hexToRgb(hex: string): [number, number, number] {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result
-    ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
-    : [74, 144, 217];
+export interface TextureOpts {
+  langColor:      string;
+  totalStars:     number;
+  recentActivity: number;
+  username:       string;
+  isNight:        boolean;
 }
 
-function clamp(val: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, val));
-}
+export function generateTexture(opts: TextureOpts): THREE.CanvasTexture {
+  const sb = Math.min(Math.floor(opts.totalStars / 500), 8);
+  const ab = Math.floor(opts.recentActivity / 20);
+  const key = `${opts.langColor}_${sb}_${ab}_${opts.isNight ? 1 : 0}`;
+  if (cache.has(key)) return cache.get(key)!;
 
-function hashStr(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return h >>> 0;
-}
-
-function lcg(seed: number) {
-  let s = seed;
-  return () => { s = (Math.imul(s, 1664525) + 1013904223) | 0; return (s >>> 0) / 0xffffffff; };
-}
-
-interface TexOpts {
-  language: string;
-  login: string;
-  stars: number;
-  activity: number;
-  faceIndex: number; // 0-3 for 4 sides
-}
-
-export function generateBuildingTexture(opts: TexOpts): THREE.CanvasTexture {
-  const key = `${opts.login}_${opts.faceIndex}_${opts.language}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-
+  const S = 32;
   const canvas = document.createElement('canvas');
-  canvas.width = TEX_SIZE;
-  canvas.height = TEX_SIZE;
+  canvas.width = S; canvas.height = S;
   const ctx = canvas.getContext('2d')!;
 
-  const langColor = getLanguageColor(opts.language);
-  const [r, g, b] = hexToRgb(langColor);
+  ctx.fillStyle = '#0a0712';
+  ctx.fillRect(0, 0, S, S);
 
-  // Base face with 50% language tint — visible under any lighting
-  const baseR = Math.round(r * 0.5 + 20);
-  const baseG = Math.round(g * 0.5 + 20);
-  const baseB = Math.round(b * 0.5 + 20);
-  ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
-  ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+  const seed = hashStr(opts.username);
+  const rng = makeRng(seed);
 
-  // Pixel noise (deterministic per face)
-  const rng = lcg(hashStr(key));
-  const imgData = ctx.getImageData(0, 0, TEX_SIZE, TEX_SIZE);
-  for (let i = 0; i < imgData.data.length; i += 4) {
-    const n = (rng() - 0.5) * 8;
-    imgData.data[i] = clamp(Math.round(imgData.data[i] + n), 0, 255);
-    imgData.data[i + 1] = clamp(Math.round(imgData.data[i + 1] + n), 0, 255);
-    imgData.data[i + 2] = clamp(Math.round(imgData.data[i + 2] + n), 0, 255);
-  }
-  ctx.putImageData(imgData, 0, 0);
-
-  // Floor lines every 8px
-  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-  ctx.lineWidth = 1;
-  for (let y = 8; y < TEX_SIZE; y += 8) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(TEX_SIZE, y);
-    ctx.stroke();
+  for (let i = 0; i < 60; i++) {
+    const px = Math.floor(rng() * S);
+    const py = Math.floor(rng() * S);
+    const v  = Math.floor(rng() * 12);
+    ctx.fillStyle = `rgba(255,255,255,${v / 120})`;
+    ctx.fillRect(px, py, 1, 1);
   }
 
-  // Neon window grid
-  const winW = 3, winH = 4, gapX = 3, gapY = 4;
-  const startX = 4, startY = 4;
-  const litRatio = Math.min(0.3 + (opts.stars / 500) * 0.3 + (opts.activity / 100) * 0.2, 0.85);
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  for (let y = 8; y < S; y += 8) ctx.fillRect(0, y, S, 1);
 
-  for (let wy = startY; wy + winH < TEX_SIZE - 2; wy += winH + gapY) {
-    for (let wx = startX; wx + winW < TEX_SIZE - 2; wx += winW + gapX) {
-      if (rng() < litRatio) {
-        // Glow aura
-        const glowR = Math.min(255, r + 60);
-        const glowG = Math.min(255, g + 60);
-        const glowB = Math.min(255, b + 60);
-        ctx.fillStyle = `rgba(${glowR},${glowG},${glowB},0.15)`;
-        ctx.fillRect(wx - 1, wy - 1, winW + 2, winH + 2);
-        // Window core
-        const bright = 0.6 + rng() * 0.4;
-        ctx.fillStyle = `rgba(${clamp(Math.round(r * bright + 100), 0, 255)},${clamp(Math.round(g * bright + 100), 0, 255)},${clamp(Math.round(b * bright + 100), 0, 255)},0.9)`;
-        ctx.fillRect(wx, wy, winW, winH);
+  const WIN = 6, GAP = 1, MARGIN = 2;
+  const STEP = WIN + GAP;
+  const COLS = Math.floor((S - MARGIN * 2) / STEP);
+  const ROWS = Math.floor((S - MARGIN * 2) / STEP);
+  const OX   = Math.floor((S - COLS * STEP - GAP) / 2);
+  const OY   = Math.floor((S - ROWS * STEP - GAP) / 2);
+
+  const baseLit = opts.isNight ? 0.94 : 0.85;
+  const litRatio = Math.min(
+    baseLit + (opts.recentActivity / 100) * 0.08 + (opts.totalStars / 3000) * 0.06,
+    0.98
+  );
+
+  const [pR, pG, pB] = hexToRgb(opts.langColor);
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const wx  = OX + col * STEP;
+      const wy  = OY + row * STEP;
+      const isLit = rng() < litRatio;
+
+      if (!isLit) {
+        // Even unlit windows get a faint color tint instead of pure dark
+        const dimIdx = Math.floor(rng() * ACCENT_POOL.length);
+        const [dR, dG, dB] = hexToRgb(ACCENT_POOL[dimIdx]);
+        const dim = opts.isNight ? 0.25 : 0.12;
+        ctx.fillStyle = `rgb(${Math.round(dR * dim)},${Math.round(dG * dim)},${Math.round(dB * dim)})`;
+        ctx.fillRect(wx, wy, WIN, WIN);
+        continue;
       }
+
+      let wR: number, wG: number, wB: number;
+      // 45% language-themed, 55% random accent — vivid mosaic look
+      const langChance = opts.isNight ? 0.45 : 0.45;
+      if (rng() < langChance) {
+        [wR, wG, wB] = [pR, pG, pB];
+      } else {
+        const accentIdx = Math.floor(rng() * ACCENT_POOL.length);
+        [wR, wG, wB] = hexToRgb(ACCENT_POOL[accentIdx]);
+      }
+
+      const boost = opts.isNight ? 1.6 : 1.3;
+      wR = Math.min(Math.round(wR * boost), 255);
+      wG = Math.min(Math.round(wG * boost), 255);
+      wB = Math.min(Math.round(wB * boost), 255);
+
+      ctx.fillStyle = `rgb(${wR},${wG},${wB})`;
+      ctx.fillRect(wx, wy, WIN, WIN);
+
+      ctx.fillStyle = `rgba(255,255,255,0.6)`;
+      ctx.fillRect(wx + 2, wy + 2, 2, 2);
+
+      ctx.fillStyle = `rgba(255,255,255,0.3)`;
+      ctx.fillRect(wx, wy, WIN, 1);
+      ctx.fillRect(wx, wy, 1, WIN);
     }
   }
+
+  const grad = ctx.createLinearGradient(S * 0.55, 0, S, 0);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.4)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, S, S);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
+  tex.wrapS     = THREE.RepeatWrapping;
+  tex.wrapT     = THREE.RepeatWrapping;
   tex.needsUpdate = true;
+
   cache.set(key, tex);
   return tex;
 }
 
 export function clearTextureCache(): void {
-  cache.forEach((t) => t.dispose());
+  cache.forEach(t => t.dispose());
   cache.clear();
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+function hashStr(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+
+function makeRng(seed: number) {
+  let s = seed;
+  return () => {
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+    return ((s >>> 0) / 0xffffffff);
+  };
 }
