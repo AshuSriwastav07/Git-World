@@ -5,11 +5,11 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 import { useCityStore } from '@/lib/cityStore';
-import { getLanguageColor } from '@/types';
-import type { CityDeveloper } from '@/types';
+import { langColor } from '@/lib/textureGenerator';
+import type { SlimUser } from '@/lib/supabaseDb';
 
 interface Props {
-  user: CityDeveloper;
+  user: SlimUser;
 }
 
 export default function BuildingSpotlight({ user }: Props) {
@@ -28,7 +28,7 @@ export default function BuildingSpotlight({ user }: Props) {
   const BH = dims.height;
   const BW = dims.width;
 
-  const langColor = getLanguageColor(user.topLanguage);
+  const lc = langColor(user.topLanguage);
   const BEAM_HEIGHT = 200;
 
   useFrame((_, delta) => {
@@ -101,7 +101,7 @@ export default function BuildingSpotlight({ user }: Props) {
       {/* Language-colored spot below beam */}
       <pointLight
         position={[BX, BH * 0.5, BZ]}
-        color={langColor}
+        color={lc}
         intensity={12}
         distance={60}
         decay={2}

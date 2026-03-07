@@ -1,212 +1,327 @@
-// CityGrid — InstancedMesh renderer: one draw call per height bucket
+// CityGrid — InstancedMesh rendering for all buildings + Minecraft grass ground + street lights
 'use client';
-import { useEffect, useMemo, useRef } from 'react';
+import { useRef, useEffect, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
-import { ThreeEvent, useThree } from '@react-three/fiber';
-import { Grid } from '@react-three/drei';
+import { useFrame, ThreeEvent } from '@react-three/fiber';
 import { useCityStore } from '@/lib/cityStore';
-import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
-import { getLanguageColor } from '@/types';
-import type { CityDeveloper, BuildingTier } from '@/types';
-import WindowSparkleLayer from './WindowSparkleLayer';
-import type { BuildingInfo } from './WindowSparkleLayer';
-import BuildingSpotlight from './BuildingSpotlight';
-import FireworkSystem from './FireworkSystem';
+import { slotToWorld, getBuildingDimensions, getGroundSize, isInsidePark } from '@/lib/cityLayout';
+import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 
-// ---- Height buckets for InstancedMesh grouping ----
-const HEIGHT_BUCKETS = [2, 3, 4, 5, 7, 9, 12, 16, 20, 25, 30, 40, 55, 70, 80];
-const MAX_PER_BUCKET = 2000;
+const MAX_BUILDINGS = 8000;
 
-function getNearestBucket(h: number): number {
-  let best = HEIGHT_BUCKETS[0];
-  let bestDist = Math.abs(h - best);
-  for (let i = 1; i < HEIGHT_BUCKETS.length; i++) {
-    const d = Math.abs(h - HEIGHT_BUCKETS[i]);
-    if (d < bestDist) { best = HEIGHT_BUCKETS[i]; bestDist = d; }
+/* ── Neutral window texture: white windows on black, tinted by instanceColor ── */
+function createWindowTexture(night: boolean): THREE.CanvasTexture {
+  const S = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = S; canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, S, S);
+
+  const WIN = 6, GAP = 1, MARGIN = 2, STEP = WIN + GAP;
+  const COLS = Math.floor((S - MARGIN * 2) / STEP);
+  const ROWS = Math.floor((S - MARGIN * 2) / STEP);
+  const OX = Math.floor((S - COLS * STEP - GAP) / 2);
+  const OY = Math.floor((S - ROWS * STEP - GAP) / 2);
+  const litRatio = night ? 0.92 : 0.82;
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const wx = OX + col * STEP;
+      const wy = OY + row * STEP;
+      if (Math.random() < litRatio) {
+        const b = Math.round((night ? 0.85 + Math.random() * 0.15 : 0.55 + Math.random() * 0.45) * 255);
+        ctx.fillStyle = `rgb(${b},${b},${b})`;
+        ctx.fillRect(wx, wy, WIN, WIN);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillRect(wx + 2, wy + 2, 2, 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(wx, wy, WIN, 1);
+        ctx.fillRect(wx, wy, 1, WIN);
+      } else {
+        const d = Math.round((night ? 0.15 : 0.06) * 255);
+        ctx.fillStyle = `rgb(${d},${d},${d})`;
+        ctx.fillRect(wx, wy, WIN, WIN);
+      }
+    }
   }
-  return best;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.03)';
+  for (let y = 8; y < S; y += 8) ctx.fillRect(0, y, S, 1);
+
+  const grad = ctx.createLinearGradient(S * 0.55, 0, S, 0);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.3)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, S, S);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 3);
+  tex.needsUpdate = true;
+  return tex;
 }
 
-interface BuildingEntry {
-  user: CityDeveloper;
-  rank: number;
-  slot: number;
-  pos: { x: number; z: number };
-  dims: { height: number; width: number; depth: number; tier: BuildingTier };
-  color: string;
-  bucket: number;
+/* ── Minecraft grass texture ── */
+function createGrassTexture(): THREE.CanvasTexture {
+  const S = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = S; canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#3a8c28';
+  ctx.fillRect(0, 0, S, S);
+  const rng = (seed: number) => { let s = seed; return () => { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return ((s >>> 0) / 0xffffffff); }; };
+  const r = rng(42069);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const v = r();
+      if (v < 0.3) { ctx.fillStyle = `rgba(20, 80, 15, ${0.15 + r() * 0.2})`; ctx.fillRect(x, y, 1, 1); }
+      else if (v < 0.45) { ctx.fillStyle = `rgba(90, 180, 50, ${0.15 + r() * 0.15})`; ctx.fillRect(x, y, 1, 1); }
+      else if (v < 0.5) { ctx.fillStyle = `rgba(120, 200, 80, ${0.2 + r() * 0.1})`; ctx.fillRect(x, y, 1, 1); }
+    }
+  }
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)'; ctx.lineWidth = 1;
+  for (let i = 0; i < S; i += 8) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke(); }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
 }
 
-const DUMMY = new THREE.Object3D();
-const tempColor = new THREE.Color();
+/* ── Street lamp ── */
+function StreetLight({ position }: { position: [number, number, number] }) {
+  const isNight = useCityStore((s) => s.isNight);
+  return (
+    <group position={position}>
+      <mesh position={[0, 2, 0]}><boxGeometry args={[0.25, 4, 0.25]} /><meshLambertMaterial color="#555555" /></mesh>
+      <mesh position={[0.5, 4, 0]}><boxGeometry args={[1, 0.2, 0.2]} /><meshLambertMaterial color="#555555" /></mesh>
+      <mesh position={[1, 3.7, 0]}><boxGeometry args={[0.6, 0.6, 0.6]} /><meshLambertMaterial color="#ffdd88" emissive={isNight ? '#ffdd88' : '#000000'} emissiveIntensity={isNight ? 2.0 : 0} /></mesh>
+      {isNight && (<mesh position={[1, 3.7, 0]}><sphereGeometry args={[1.8, 8, 8]} /><meshBasicMaterial color="#ffcc66" transparent opacity={0.08} depthWrite={false} /></mesh>)}
+    </group>
+  );
+}
 
-export function CityGrid() {
+/* ── Selection ring at selected building ── */
+function SelectionRing() {
+  const selectedUser = useCityStore(s => s.selectedUser);
+  const sortedLogins = useCityStore(s => s.sortedLogins);
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  const target = useMemo(() => {
+    if (!selectedUser) return null;
+    const idx = sortedLogins.indexOf(selectedUser.login.toLowerCase());
+    const rank = idx >= 0 ? idx + 1 : (selectedUser.cityRank ?? 1);
+    const slot = selectedUser.citySlot ?? (rank - 1);
+    const pos = slotToWorld(slot);
+    const dims = getBuildingDimensions(rank, slot, selectedUser);
+    return { pos, dims };
+  }, [selectedUser, sortedLogins]);
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current || !target) return;
+    const t = clock.getElapsedTime();
+    meshRef.current.scale.setScalar(1 + 0.15 * Math.sin(t * 4));
+    (meshRef.current.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.35 * Math.sin(t * 4);
+  });
+
+  if (!target) return null;
+  const maxDim = Math.max(target.dims.width, target.dims.depth);
+  return (
+    <mesh ref={meshRef} position={[target.pos.x, 0.05, target.pos.z]} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[maxDim * 0.9, maxDim * 1.9, 32]} />
+      <meshBasicMaterial color="#f5c518" transparent opacity={0.6} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>
+  );
+}
+
+/* ── Tier 1 crown for rank-1 building ── */
+function Tier1Crown() {
   const users = useCityStore(s => s.users);
   const sortedLogins = useCityStore(s => s.sortedLogins);
-  const selectedUser = useCityStore(s => s.selectedUser);
-  const selectUser = useCityStore(s => s.selectUser);
-  const isNightMode = useCityStore(s => s.isNightMode);
-  const { invalidate } = useThree();
+  if (sortedLogins.length === 0) return null;
+  const user = users.get(sortedLogins[0]);
+  if (!user) return null;
+  const slot = user.citySlot ?? 0;
+  const pos = slotToWorld(slot);
+  const { height, width, depth } = getBuildingDimensions(1, slot, user);
+  const langColor = LANGUAGE_COLORS[user.topLanguage] ?? LANGUAGE_COLORS.default;
+  return (
+    <group position={[pos.x, 0, pos.z]}>
+      {([[0.75, 10], [0.50, 8], [0.30, 6]] as const).map(([s, h], i) => (
+        <mesh key={i} position={[0, height - 15 + 10 * i + h / 2, 0]}>
+          <boxGeometry args={[width * s, h, depth * s]} />
+          <meshLambertMaterial color={langColor} />
+        </mesh>
+      ))}
+      <mesh position={[0, height + 9, 0]}><boxGeometry args={[0.5, 1.5, 0.5]} /><meshBasicMaterial color="#ffd700" /></mesh>
+      <mesh position={[0, height + 19, 0]}><boxGeometry args={[0.1, 18, 0.1]} /><meshBasicMaterial color="#aaaaaa" /></mesh>
+      {([[-1, -1], [1, -1], [-1, 1], [1, 1]] as const).map(([sx, sz], i) => (
+        <mesh key={`gs-${i}`} position={[sx * (width / 2 + 0.08), height / 2, sz * (depth / 2 + 0.08)]}>
+          <boxGeometry args={[0.08, height, 0.08]} />
+          <meshBasicMaterial color="#ffd700" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
 
-  const meshRefs = useRef(new Map<number, THREE.InstancedMesh>());
+/* ════════════════════════════════════════════════════════════════════════════
+   CityGrid — main export
+   Uses TWO InstancedMeshes: body (textured) + glow (additive blending).
+   Individual Building components are eliminated for 60 fps at 5000+ buildings.
+   ════════════════════════════════════════════════════════════════════════════ */
+export function CityGrid() {
+  const bodyRef = useRef<THREE.InstancedMesh>(null);
+  const glowRef = useRef<THREE.InstancedMesh>(null);
 
-  // Build all building entries
-  const allBuildings = useMemo(() => {
-    const result: BuildingEntry[] = [];
+  const users        = useCityStore(s => s.users);
+  const sortedLogins = useCityStore(s => s.sortedLogins);
+  const selectUser   = useCityStore(s => s.selectUser);
+  const isNight      = useCityStore(s => s.isNight);
+
+  const loginsByInstance = useRef<string[]>([]);
+  const instanceCount = useRef(0);
+
+  /* Shared geometry — a unit cube scaled per instance */
+  const boxGeo = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
+
+  /* Window texture — regenerated on night toggle */
+  const windowTex = useMemo(() => typeof window !== 'undefined' ? createWindowTexture(isNight) : null, [isNight]);
+
+  /* Materials */
+  const bodyMat = useMemo(() => new THREE.MeshLambertMaterial({
+    map: windowTex ?? undefined,
+    emissive: isNight ? new THREE.Color('#ffcc66') : new THREE.Color('#000000'),
+    emissiveIntensity: isNight ? 0.18 : 0,
+    emissiveMap: isNight ? windowTex ?? undefined : undefined,
+  }), [windowTex, isNight]);
+
+  const glowMat = useMemo(() => new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: isNight ? 0.3 : 0.05,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide,
+  }), [isNight]);
+
+  /* ── Build / rebuild all instances ── */
+  useEffect(() => {
+    const body = bodyRef.current;
+    const glow = glowRef.current;
+    if (!body || !glow) return;
+
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
+    const logins: string[] = [];
+    let count = 0;
+
     sortedLogins.forEach((login, index) => {
       const user = users.get(login);
-      if (!user) return;
+      if (!user || count >= MAX_BUILDINGS) return;
       const slot = user.citySlot ?? index;
-      const pos = slotToWorld(slot);
       const rank = index + 1;
+      const pos = slotToWorld(slot);
+      if (isInsidePark(pos.x, pos.z)) return;
       const dims = getBuildingDimensions(rank, slot, user);
-      const color = getLanguageColor(user.topLanguage);
-      const bucket = getNearestBucket(dims.height);
-      result.push({ user, rank, slot, pos, dims, color, bucket });
+
+      dummy.position.set(pos.x, dims.height / 2, pos.z);
+      dummy.scale.set(dims.width, dims.height, dims.depth);
+      dummy.updateMatrix();
+      body.setMatrixAt(count, dummy.matrix);
+
+      dummy.scale.set(dims.width + 0.35, dims.height + 0.1, dims.depth + 0.35);
+      dummy.updateMatrix();
+      glow.setMatrixAt(count, dummy.matrix);
+
+      const langCol = LANGUAGE_COLORS[user.topLanguage] ?? LANGUAGE_COLORS.default;
+      color.set(langCol);
+      body.setColorAt(count, color);
+      glow.setColorAt(count, color);
+
+      logins.push(login);
+      count++;
     });
-    return result;
-  }, [users, sortedLogins]);
 
-  // Group by bucket
-  const byBucket = useMemo(() => {
-    const map = new Map<number, BuildingEntry[]>();
-    for (const b of allBuildings) {
-      const arr = map.get(b.bucket) ?? [];
-      arr.push(b);
-      map.set(b.bucket, arr);
-    }
-    return map;
-  }, [allBuildings]);
+    body.count = count;
+    glow.count = count;
+    body.instanceMatrix.needsUpdate = true;
+    glow.instanceMatrix.needsUpdate = true;
+    if (body.instanceColor) body.instanceColor.needsUpdate = true;
+    if (glow.instanceColor) glow.instanceColor.needsUpdate = true;
+    body.computeBoundingSphere();
+    glow.computeBoundingSphere();
 
-  // WindowSparkleLayer data
-  const windowBuildings: BuildingInfo[] = useMemo(() =>
-    allBuildings.map(b => ({
-      pos: b.pos,
-      dims: b.dims,
-      color: b.color,
-      user: { login: b.user.login, recentActivity: b.user.recentActivity },
-    })),
-    [allBuildings],
-  );
+    loginsByInstance.current = logins;
+    instanceCount.current = count;
+  }, [users, sortedLogins, isNight]);
 
-  // Update instance matrices + colors when buildings or selection change
-  useEffect(() => {
-    const hasSelection = !!selectedUser;
-
-    for (const [bucket, buildings] of byBucket.entries()) {
-      const mesh = meshRefs.current.get(bucket);
-      if (!mesh) continue;
-
-      const count = Math.min(buildings.length, MAX_PER_BUCKET);
-      mesh.count = count;
-
-      for (let i = 0; i < count; i++) {
-        const b = buildings[i];
-        // Position: center Y at bucket/2, scale X/Z to footprint
-        DUMMY.position.set(b.pos.x, bucket / 2, b.pos.z);
-        DUMMY.scale.set(b.dims.width, 1, b.dims.depth);
-        DUMMY.rotation.set(0, 0, 0);
-        DUMMY.updateMatrix();
-        mesh.setMatrixAt(i, DUMMY.matrix);
-
-        // DARK body — buildings are NOT colored, WINDOWS are colored
-        tempColor.set(b.color);
-        const lr = tempColor.r, lg = tempColor.g, lb = tempColor.b;
-        tempColor.setRGB(lr * 0.15 + 0.06, lg * 0.15 + 0.06, lb * 0.15 + 0.06);
-        if (hasSelection) {
-          if (selectedUser.login !== b.user.login) {
-            tempColor.multiplyScalar(0.4);
-          } else {
-            tempColor.multiplyScalar(2.5);
-          }
-        }
-        mesh.setColorAt(i, tempColor);
-      }
-
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      // Force shader recompile so instanceColor is included
-      (mesh.material as THREE.Material).needsUpdate = true;
-    }
-    invalidate();
-  }, [byBucket, selectedUser, invalidate]);
-
-  // Click handler — find which bucket + instance was clicked
-  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+  /* ── Click handler ── */
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    const mesh = e.object as THREE.InstancedMesh;
-    const instanceId = e.instanceId;
-    if (instanceId === undefined) { selectUser(null); return; }
+    if (e.instanceId !== undefined) {
+      const login = loginsByInstance.current[e.instanceId];
+      if (login) {
+        const user = useCityStore.getState().users.get(login);
+        if (user) selectUser(user);
+      }
+    }
+  }, [selectUser]);
 
-    const bucket = [...meshRefs.current.entries()]
-      .find(([, m]) => m === mesh)?.[0];
-    if (bucket === undefined) return;
+  /* ── Ground ── */
+  const groundSize = getGroundSize(sortedLogins.length);
+  const grassTex = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const tex = createGrassTexture();
+    tex.repeat.set(Math.max(Math.round(groundSize / 5), 12), Math.max(Math.round(groundSize / 5), 12));
+    return tex;
+  }, [groundSize]);
 
-    const buildings = byBucket.get(bucket) ?? [];
-    const building = buildings[instanceId];
-    if (building) selectUser(building.user);
-  };
+  /* ── Street lights ── */
+  const streetLights = useMemo(() => {
+    const positions: [number, number, number][] = [];
+    const half = Math.floor(groundSize / 2);
+    for (let x = -half + 10; x < half; x += 20) {
+      for (let z = -half + 10; z < half; z += 20) {
+        if (!isInsidePark(x, z)) positions.push([x, 0, z]);
+      }
+    }
+    return positions;
+  }, [groundSize]);
 
   return (
-    <group>
-      {/* Ground plane — dark navy base */}
-      <mesh position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[2000, 2000]} />
-        <meshBasicMaterial color="#0a0a1a" />
+    <group onPointerMissed={() => selectUser(null)}>
+      {/* Ground */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow={false}>
+        <planeGeometry args={[groundSize, groundSize]} />
+        <meshLambertMaterial map={grassTex ?? undefined} color={grassTex ? '#ffffff' : '#3a8c28'} />
       </mesh>
 
-      {/* Neon grid overlay */}
-      <Grid
-        position={[0, 0.01, 0]}
-        infiniteGrid
-        cellSize={5}
-        cellColor={isNightMode ? '#1a1a5a' : '#8888bb'}
-        sectionSize={25}
-        sectionColor={isNightMode ? '#4444cc' : '#9999dd'}
-        fadeDistance={600}
-        fadeStrength={1}
-        cellThickness={0.6}
-        sectionThickness={1.5}
+      {/* Street Lights */}
+      {streetLights.map((pos, i) => <StreetLight key={`sl-${i}`} position={pos} />)}
+
+      {/* Building bodies — InstancedMesh */}
+      <instancedMesh
+        ref={bodyRef}
+        args={[boxGeo, bodyMat, MAX_BUILDINGS]}
+        onClick={handleClick}
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+        onPointerOut={() => { document.body.style.cursor = 'default'; }}
+        frustumCulled={false}
       />
 
-      {/* One InstancedMesh per height bucket */}
-      {HEIGHT_BUCKETS.map(bucket => {
-        const count = (byBucket.get(bucket) ?? []).length;
-        if (count === 0) return null;
-        return (
-          <instancedMesh
-            key={bucket}
-            ref={el => {
-              if (el) {
-                meshRefs.current.set(bucket, el);
-                // Pre-init instanceColor so shader compiles with instance color support
-                if (!el.instanceColor) {
-                  const c = new Float32Array(MAX_PER_BUCKET * 3);
-                  for (let j = 0; j < c.length; j++) c[j] = 0.1;
-                  el.instanceColor = new THREE.InstancedBufferAttribute(c, 3);
-                }
-              }
-            }}
-            args={[undefined, undefined, MAX_PER_BUCKET]}
-            frustumCulled={false}
-            onClick={handleClick}
-            onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
-            onPointerOut={() => { document.body.style.cursor = 'default'; }}
-          >
-            <boxGeometry args={[1, bucket, 1]} />
-            <meshBasicMaterial color="#ffffff" toneMapped={false} />
-          </instancedMesh>
-        );
-      })}
+      {/* Glow shells — InstancedMesh */}
+      <instancedMesh ref={glowRef} args={[boxGeo, glowMat, MAX_BUILDINGS]} frustumCulled={false} renderOrder={0} />
 
-      {/* Glowing window quads on building faces */}
-      <WindowSparkleLayer buildings={windowBuildings} isNight={isNightMode} />
+      {/* Selection ring */}
+      <SelectionRing />
 
-      {/* Selection spotlight beam + ring */}
-      {selectedUser && <BuildingSpotlight user={selectedUser} />}
-
-      {/* Firework particle bursts in the sky */}
-      <FireworkSystem />
+      {/* Tier 1 crown decorations */}
+      <Tier1Crown />
     </group>
   );
 }
