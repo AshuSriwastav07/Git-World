@@ -82,7 +82,8 @@ export default function FireworkSystem() {
     }
   }
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    const delta = Math.min(rawDelta, 0.05);
     nextFirework.current -= delta;
     if (nextFirework.current <= 0) {
       const burst = 1 + Math.floor(Math.random() * 3);

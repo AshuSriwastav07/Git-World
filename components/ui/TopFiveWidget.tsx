@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react';
 import { useCityStore } from '@/lib/cityStore';
-import { getLanguageColor } from '@/types';
+import { langColor } from '@/lib/textureGenerator';
 import { slotToWorld } from '@/lib/cityLayout';
 
 const FONT = "'Press Start 2P', monospace";
@@ -11,7 +11,7 @@ const FONT = "'Press Start 2P', monospace";
 export function TopFiveWidget() {
   const users = useCityStore((s) => s.users);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
-  const setFlyToTarget = useCityStore((s) => s.setFlyToTarget);
+  const setFlyTarget = useCityStore((s) => s.setFlyTarget);
 
   const top5 = useMemo(() => {
     const all = Array.from(users.values());
@@ -25,7 +25,7 @@ export function TopFiveWidget() {
     if (!dev) return;
     setSelectedUser(dev);
     const world = slotToWorld(dev.citySlot);
-    setFlyToTarget({ x: world.x, y: 0, z: world.z });
+    setFlyTarget({ x: world.x, y: 0, z: world.z });
   };
 
   return (
@@ -34,7 +34,7 @@ export function TopFiveWidget() {
         🏆 TOP 5
       </h3>
       {top5.map((user, i) => {
-        const langColor = getLanguageColor(user.topLanguage);
+        const lc = langColor(user.topLanguage);
         return (
           <button
             key={user.login}
@@ -52,7 +52,7 @@ export function TopFiveWidget() {
             </span>
             <div
               className="w-2 h-2 flex-shrink-0"
-              style={{ backgroundColor: langColor }}
+              style={{ backgroundColor: lc }}
             />
             <span
               className="text-[6px] text-white truncate flex-1"

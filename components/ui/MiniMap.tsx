@@ -1,19 +1,31 @@
 // MiniMap — 180×180 canvas overhead view of the city
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useCityStore } from '@/lib/cityStore';
-import { SLOT_PITCH } from '@/lib/cityLayout';
-import { GRID_SIZE } from '@/types';
+import { slotToWorld, getTier, getGroundSize, getTechParkWorldCenter } from '@/lib/cityLayout';
+import { langColor } from '@/lib/textureGenerator';
 
 const MAP_SIZE = 180;
-// World extent: spiral can reach ±(GRID_SIZE/2 * SLOT_PITCH)
-const HALF_EXTENT = Math.ceil(Math.sqrt(GRID_SIZE / Math.PI)) * SLOT_PITCH + 20;
 
 export function MiniMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const buildings = useCityStore((s) => s.buildings);
-  const setFlyToTarget = useCityStore((s) => s.setFlyToTarget);
+  const users = useCityStore((s) => s.users);
+  const sortedLogins = useCityStore((s) => s.sortedLogins);
+  const setFlyTarget = useCityStore((s) => s.setFlyTarget);
+
+  const dots = useMemo(() => {
+    return Array.from(users.values()).map((u) => {
+      const pos = slotToWorld(u.citySlot);
+      return { x: pos.x, z: pos.z, tier: getTier(u.cityRank), color: langColor(u.topLanguage) };
+    });
+  }, [users]);
+
+  // Compute dynamic extent based on actual city size
+  const halfExtent = useMemo(() => {
+    const gs = getGroundSize(sortedLogins.length);
+    return Math.max(gs / 2 + 10, 120);
+  }, [sortedLogins.length]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -21,24 +33,46 @@ export function MiniMap() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Dark background
     ctx.fillStyle = '#0d0d1a';
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
 
-    const scale = MAP_SIZE / (HALF_EXTENT * 2);
+    const scale = MAP_SIZE / (halfExtent * 2);
 
-    for (const b of buildings) {
-      // worldX/worldZ are centered on (0,0), map to canvas
-      const cx = (b.worldX + HALF_EXTENT) * scale;
-      const cz = (b.worldZ + HALF_EXTENT) * scale;
+    // Draw green ground area
+    const groundSize = getGroundSize(sortedLogins.length);
+    const gPx = groundSize * scale;
+    const gOff = (MAP_SIZE - gPx) / 2;
+    ctx.fillStyle = '#1a3a12';
+    ctx.fillRect(gOff, gOff, gPx, gPx);
+
+    // Draw park area
+    const park = getTechParkWorldCenter();
+    const parkPx = 50 * scale;
+    const parkX = (park.x + halfExtent) * scale - parkPx / 2;
+    const parkZ = (park.z + halfExtent) * scale - parkPx / 2;
+    ctx.fillStyle = '#2d6a1e';
+    ctx.fillRect(parkX, parkZ, parkPx, parkPx);
+
+    // Draw buildings as colored dots
+    for (const b of dots) {
+      const cx = (b.x + halfExtent) * scale;
+      const cz = (b.z + halfExtent) * scale;
       ctx.fillStyle = b.color;
-      const dotSize = Math.max(1, Math.min(b.tier <= 2 ? 3 : b.tier <= 3 ? 2 : 1, 3));
+      const dotSize = b.tier <= 1 ? 4 : b.tier <= 2 ? 3 : b.tier <= 3 ? 2.5 : 2;
       ctx.fillRect(cx - dotSize / 2, cz - dotSize / 2, dotSize, dotSize);
     }
 
+    // Draw border
     ctx.strokeStyle = '#fbbf24';
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
-  }, [buildings]);
+
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '9px monospace';
+    ctx.fillText('MAP', 6, 14);
+  }, [dots, halfExtent, sortedLogins.length]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -48,13 +82,13 @@ export function MiniMap() {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      const scale = MAP_SIZE / (HALF_EXTENT * 2);
-      const worldX = x / scale - HALF_EXTENT;
-      const worldZ = y / scale - HALF_EXTENT;
+      const scale = MAP_SIZE / (halfExtent * 2);
+      const worldX = x / scale - halfExtent;
+      const worldZ = y / scale - halfExtent;
 
-      setFlyToTarget({ x: worldX, y: 0, z: worldZ });
+      setFlyTarget({ x: worldX, y: 0, z: worldZ });
     },
-    [setFlyToTarget]
+    [setFlyTarget, halfExtent]
   );
 
   return (

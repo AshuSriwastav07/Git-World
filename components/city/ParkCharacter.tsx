@@ -5,12 +5,12 @@ import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
-import type { CityDeveloper } from '@/types';
-import { getLanguageColor } from '@/types';
+import type { SlimUser } from '@/lib/supabaseDb';
+import { langColor } from '@/lib/textureGenerator';
 import { useCityStore } from '@/lib/cityStore';
 
 interface ParkCharacterProps {
-  developer: CityDeveloper;
+  developer: SlimUser;
   position: [number, number, number];
 }
 
@@ -18,7 +18,7 @@ export function ParkCharacter({ developer, position }: ParkCharacterProps) {
   const headRef = useRef<THREE.Mesh>(null);
   const groupRef = useRef<THREE.Group>(null);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
-  const bodyColor = getLanguageColor(developer.topLanguage);
+  const bodyColor = langColor(developer.topLanguage);
 
   useFrame(({ clock, camera }) => {
     if (headRef.current) {

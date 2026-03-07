@@ -1,9 +1,15 @@
-// LiveFeed — bottom scrolling event ticker from Realtime DB
+// LiveFeed — bottom scrolling event ticker from Supabase Realtime
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { subscribeToLiveEvents } from '@/lib/realtimeDb';
-import type { LiveEvent } from '@/types';
+import { subscribeToLiveEvents } from '@/lib/supabaseDb';
+
+interface LiveEvent {
+  type: string;
+  login: string;
+  detail: string;
+  timestamp: number;
+}
 
 const FONT = "'Press Start 2P', monospace";
 const MAX_EVENTS = 30;
@@ -26,14 +32,20 @@ export function LiveFeed() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const unsubscribe = subscribeToLiveEvents((event) => {
+    const channel = subscribeToLiveEvents((row) => {
+      const event: LiveEvent = {
+        type:      row.type ?? 'join',
+        login:     row.login ?? '',
+        detail:    row.detail ?? '',
+        timestamp: Date.now(),
+      };
       setEvents((prev) => {
         const next = [...prev, event];
         if (next.length > MAX_EVENTS) next.shift();
         return next;
       });
-    }, 20);
-    return unsubscribe;
+    });
+    return () => { channel.unsubscribe(); };
   }, []);
 
   // Auto-scroll animation

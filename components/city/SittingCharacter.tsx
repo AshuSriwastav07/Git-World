@@ -4,12 +4,12 @@ import { useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
-import type { CityDeveloper } from '@/types';
-import { getLanguageColor } from '@/types';
+import type { SlimUser } from '@/lib/supabaseDb';
+import { langColor } from '@/lib/textureGenerator';
 import { useCityStore } from '@/lib/cityStore';
 
 interface SittingCharacterProps {
-  user: CityDeveloper;
+  user: SlimUser;
   position: [number, number, number];
   cameraDistance?: number;
 }
@@ -19,7 +19,7 @@ export default function SittingCharacter({ user, position, cameraDistance = 999 
   const [hovered, setHovered] = useState(false);
   const setSelectedUser = useCityStore(s => s.setSelectedUser);
 
-  const bodyColor = getLanguageColor(user.topLanguage);
+  const bodyColor = langColor(user.topLanguage);
   const skinColor = '#f4c89a';
   const pantsColor = '#2c3e50';
 
