@@ -1,22 +1,34 @@
-// CameraController — OrbitControls + fly-to animation + WASD pan + airplane toggle
+// CameraController — OrbitControls + auto-rotate + fly-to + WASD + keyboard shortcuts + cinematic intro
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import type { OrbitControls as OCType } from 'three-stdlib';
 import { useCityStore } from '@/lib/cityStore';
+import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 
-export function CameraController() {
-  const controlsRef = useRef<any>(null);
-  const { camera } = useThree();
-  const isAirplaneMode = useCityStore((s) => s.isAirplaneMode);
-  const flyToTarget = useCityStore((s) => s.flyToTarget);
-  const setFlyToTarget = useCityStore((s) => s.setFlyToTarget);
-  const toggleAirplaneMode = useCityStore((s) => s.toggleAirplaneMode);
-  const toggleNightMode = useCityStore((s) => s.toggleNightMode);
-  const setRankChartOpen = useCityStore((s) => s.setRankChartOpen);
-  const isRankChartOpen = useCityStore((s) => s.isRankChartOpen);
+/* ── Default camera position ── */
+const DEFAULT_POS = new THREE.Vector3(80, 55, 160);
+const DEFAULT_TGT = new THREE.Vector3(0, 5, 0);
+
+export default function CameraController() {
+  const controlsRef = useRef<OCType>(null);
+  const { camera, clock } = useThree();
+
+  const selectedUser     = useCityStore(s => s.selectedUser);
+  const sortedLogins     = useCityStore(s => s.sortedLogins);
+  const isAirplaneMode   = useCityStore(s => s.isAirplaneMode);
+  const flyTarget        = useCityStore(s => s.flyTarget);
+  const setFlyTarget     = useCityStore(s => s.setFlyTarget);
+  const toggleAirplaneMode = useCityStore(s => s.toggleAirplaneMode);
+  const toggleNight      = useCityStore(s => s.toggleNight);
+  const setRankChartOpen = useCityStore(s => s.setRankChartOpen);
+  const isRankChartOpen  = useCityStore(s => s.isRankChartOpen);
+  const introStage       = useCityStore(s => s.introStage);
+  const userInteracted   = useCityStore(s => s.userInteracted);
+  const setUserInteracted = useCityStore(s => s.setUserInteracted);
 
   const flyAnim = useRef({
     active: false,
@@ -29,103 +41,144 @@ export function CameraController() {
 
   const keysPressed = useRef(new Set<string>());
 
-  // Keyboard handlers
+  // ── Reset clock on tab visibility ──
+  useEffect(() => {
+    const onVis = () => { if (!document.hidden) clock.start(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [clock]);
+
+  // ── Set initial camera position ──
+  useEffect(() => {
+    camera.position.copy(DEFAULT_POS);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(DEFAULT_TGT);
+      controlsRef.current.update();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── User interaction listener (stops auto-rotate permanently) ──
+  useEffect(() => {
+    if (userInteracted) return;
+    const stop = () => { setUserInteracted(); };
+    const el = document.body;
+    el.addEventListener('pointerdown', stop, { once: true });
+    el.addEventListener('wheel', stop, { once: true });
+    el.addEventListener('touchstart', stop, { once: true });
+    return () => {
+      el.removeEventListener('pointerdown', stop);
+      el.removeEventListener('wheel', stop);
+      el.removeEventListener('touchstart', stop);
+    };
+  }, [userInteracted, setUserInteracted]);
+
+  // ── Keyboard shortcuts ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       keysPressed.current.add(key);
-
+      // Mark user interaction on keyboard press
+      if (!useCityStore.getState().userInteracted) useCityStore.getState().setUserInteracted();
       if (key === 'f') toggleAirplaneMode();
-      if (key === 'n') toggleNightMode();
+      if (key === 'n') toggleNight();
       if (key === 'r') setRankChartOpen(!isRankChartOpen);
       if (key === 'escape') {
         useCityStore.getState().setSelectedUser(null);
         useCityStore.getState().setRankChartOpen(false);
       }
     };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      keysPressed.current.delete(e.key.toLowerCase());
-    };
+    const handleKeyUp = (e: KeyboardEvent) => keysPressed.current.delete(e.key.toLowerCase());
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isRankChartOpen]);
+  }, [isRankChartOpen, setRankChartOpen, toggleAirplaneMode, toggleNight]);
 
-  // Fly-to animation trigger
+  // ── Fly to selected building ──
   useEffect(() => {
-    if (flyToTarget && controlsRef.current) {
-      const anim = flyAnim.current;
-      anim.active = true;
-      anim.progress = 0;
-      anim.startPos.copy(camera.position);
-      anim.endPos.set(flyToTarget.x + 15, flyToTarget.y + 30, flyToTarget.z + 25);
-      anim.startTarget.copy(controlsRef.current.target);
-      anim.endTarget.set(flyToTarget.x, flyToTarget.y, flyToTarget.z);
-    }
-  }, [flyToTarget]);
+    if (!selectedUser) return;
+    const rank = selectedUser.cityRank ?? Math.max(sortedLogins.indexOf(selectedUser.login.toLowerCase()) + 1, 1);
+    const slot = selectedUser.citySlot ?? (rank - 1);
+    const pos  = slotToWorld(slot);
+    const dims = getBuildingDimensions(rank, slot, selectedUser);
+    const H = dims.height, BX = pos.x, BZ = pos.z;
+    const dist = Math.max(H * 1.6, 25);
+    const a = flyAnim.current;
+    a.startPos.copy(camera.position);
+    a.endPos.set(BX + dist * 0.4, H * 0.7 + 12, BZ + dist);
+    a.startTarget.copy(controlsRef.current?.target ?? new THREE.Vector3());
+    a.endTarget.set(BX, H * 0.4, BZ);
+    a.progress = 0;
+    a.active = true;
+  }, [selectedUser?.login, camera, sortedLogins]);
 
-  // WASD panning + fly-to animation
-  useFrame((_, delta) => {
+  // ── Fly via flyTarget store ──
+  useEffect(() => {
+    if (!flyTarget || !controlsRef.current || selectedUser) return;
+    const a = flyAnim.current;
+    a.active = true; a.progress = 0;
+    a.startPos.copy(camera.position);
+    a.endPos.set(flyTarget.x + 15, flyTarget.y + 30, flyTarget.z + 25);
+    a.startTarget.copy(controlsRef.current.target);
+    a.endTarget.set(flyTarget.x, flyTarget.y, flyTarget.z);
+  }, [flyTarget, camera, selectedUser]);
+
+  // ── Frame loop ──
+  useFrame((_, rawDelta) => {
     if (isAirplaneMode) return;
+    const delta = Math.min(rawDelta, 0.06);
 
-    // WASD panning
-    const speed = keysPressed.current.has('shift') ? 150 : 50;
-    const keys = keysPressed.current;
+    // ── WASD panning ──
     if (controlsRef.current && !flyAnim.current.active) {
+      const speed = keysPressed.current.has('shift') ? 150 : 50;
+      const keys = keysPressed.current;
       const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
+      camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
       const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
-
-      const panDelta = new THREE.Vector3();
-      if (keys.has('w')) panDelta.add(forward.clone().multiplyScalar(speed * delta));
-      if (keys.has('s')) panDelta.add(forward.clone().multiplyScalar(-speed * delta));
-      if (keys.has('a')) panDelta.add(right.clone().multiplyScalar(-speed * delta));
-      if (keys.has('d')) panDelta.add(right.clone().multiplyScalar(speed * delta));
-
-      if (panDelta.length() > 0) {
-        camera.position.add(panDelta);
-        controlsRef.current.target.add(panDelta);
-      }
+      const pan = new THREE.Vector3();
+      if (keys.has('w')) pan.add(forward.clone().multiplyScalar(speed * delta));
+      if (keys.has('s')) pan.add(forward.clone().multiplyScalar(-speed * delta));
+      if (keys.has('a')) pan.add(right.clone().multiplyScalar(-speed * delta));
+      if (keys.has('d')) pan.add(right.clone().multiplyScalar(speed * delta));
+      if (pan.length() > 0) { camera.position.add(pan); controlsRef.current.target.add(pan); }
     }
 
-    // Fly-to animation
+    // ── Fly-to animation ──
     const anim = flyAnim.current;
     if (anim.active) {
-      anim.progress += delta / 1.5; // 1.5 seconds duration
-      const t = easeInOutCubic(Math.min(anim.progress, 1));
-
-      camera.position.lerpVectors(anim.startPos, anim.endPos, t);
+      anim.progress = Math.min(anim.progress + delta * 1.5, 1);
+      const ease = easeInOutCubic(anim.progress);
+      camera.position.lerpVectors(anim.startPos, anim.endPos, ease);
       if (controlsRef.current) {
-        controlsRef.current.target.lerpVectors(anim.startTarget, anim.endTarget, t);
+        controlsRef.current.target.lerpVectors(anim.startTarget, anim.endTarget, ease);
+        controlsRef.current.update();
       }
-
-      if (anim.progress >= 1) {
-        anim.active = false;
-        setFlyToTarget(null);
-      }
+      if (anim.progress >= 1) { anim.active = false; setFlyTarget(null); }
     }
   });
 
   if (isAirplaneMode) return null;
 
+  // Auto-rotate: orbit slowly until user interacts
+  const shouldAutoRotate = !userInteracted;
+
   return (
     <OrbitControls
       ref={controlsRef}
       enableDamping
-      dampingFactor={0.06}
+      dampingFactor={0.07}
       screenSpacePanning={false}
-      minDistance={20}
-      maxDistance={800}
-      maxPolarAngle={Math.PI / 2.1}
+      minDistance={5}
+      maxDistance={400}
+      maxPolarAngle={Math.PI / 2.05}
       rotateSpeed={0.5}
       zoomSpeed={0.8}
       panSpeed={0.6}
-      target={[0, 15, 0]}
+      makeDefault
+      autoRotate={shouldAutoRotate}
+      autoRotateSpeed={0.4}
     />
   );
 }
