@@ -1,20 +1,20 @@
-# Minecraft GitHub City
+# Git World
 
-Minecraft GitHub City is a 3D voxel-style developer city built with Next.js, React Three Fiber, Three.js, and Firebase. Each building represents a GitHub developer profile, with city layout, building size, lighting, and rankings driven by GitHub activity and stored city data.
+Git World is a 3D voxel-style developer city built with Next.js, React Three Fiber, Three.js, and Supabase. Each building represents a GitHub developer profile, with city layout, building size, lighting, and rankings driven by GitHub activity and stored city data.
 
-The app loads saved developers from Firebase, renders them as a navigable city, and keeps discovering new developers in the background through GitHub-powered API routes.
+The app loads saved developers from Supabase, renders them as a navigable city, and keeps discovering new developers in the background through GitHub-powered API routes.
 
 ## Features
 
-- 3D Minecraft-inspired city rendered with React Three Fiber and Three.js
+- 3D developer city rendered with React Three Fiber and Three.js
 - GitHub developer profiles converted into buildings with ranks, tiers, and score-based scaling
-- Real-time city growth using Firebase Firestore and Realtime Database
+- Real-time city growth using Supabase Realtime
 - Search and add developers directly into the city
 - Background GitHub discovery stream for continuously expanding the city
 - Day and night visual modes
 - Airplane mode for free-flight exploration
 - Ranking widgets, minimap, live feed, profile modal, and camera fly-to interactions
-- Performance-focused rendering with instancing and layered effects
+- Performance-focused rendering with InstancedMesh and layered effects
 
 ## Tech Stack
 
@@ -24,7 +24,7 @@ The app loads saved developers from Firebase, renders them as a navigable city, 
 - Three.js
 - @react-three/fiber
 - @react-three/drei
-- Firebase
+- Supabase
 - Zustand
 - Tailwind CSS 4
 
@@ -32,7 +32,7 @@ The app loads saved developers from Firebase, renders them as a navigable city, 
 
 The application boots in two phases:
 
-1. It loads saved developer data from Firebase and renders the existing city quickly.
+1. It loads saved developer data from Supabase and renders the existing city quickly.
 2. It starts a background discovery stream that searches GitHub for additional developers and adds them into the city over time.
 
 Each developer is transformed into city data that includes:

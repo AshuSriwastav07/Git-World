@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useCityStore } from '@/lib/cityStore';
-import { getLanguageColor } from '@/types';
+import { langColor } from '@/lib/textureGenerator';
 import { slotToWorld } from '@/lib/cityLayout';
 
 const FONT = "'Press Start 2P', monospace";
@@ -15,7 +15,7 @@ export function RankChart() {
   const setOpen = useCityStore((s) => s.setRankChartOpen);
   const users = useCityStore((s) => s.users);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
-  const setFlyToTarget = useCityStore((s) => s.setFlyToTarget);
+  const setFlyTarget = useCityStore((s) => s.setFlyTarget);
 
   const [tab, setTab] = useState<Tab>('all');
 
@@ -32,7 +32,9 @@ export function RankChart() {
         sorted.sort((a, b) => b.recentActivity - a.recentActivity);
         break;
       case 'newest':
-        sorted.sort((a, b) => b.firstAddedAt - a.firstAddedAt);
+        sorted.sort((a, b) =>
+          (b.firstAddedAt || '').localeCompare(a.firstAddedAt || '')
+        );
         break;
     }
 
@@ -54,7 +56,7 @@ export function RankChart() {
     if (!dev) return;
     setSelectedUser(dev);
     const world = slotToWorld(dev.citySlot);
-    setFlyToTarget({ x: world.x, y: 0, z: world.z });
+    setFlyTarget({ x: world.x, y: 0, z: world.z });
     setOpen(false);
   };
 
@@ -71,7 +73,7 @@ export function RankChart() {
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-[#333]">
         <h2 className="text-[10px] text-[#fbbf24]" style={{ fontFamily: FONT }}>
-          GITHUB CITY TOP 100
+          GIT WORLD TOP 100
         </h2>
         <button
           onClick={() => setOpen(false)}
@@ -104,7 +106,7 @@ export function RankChart() {
       {/* Rankings list */}
       <div className="overflow-y-auto" style={{ height: 'calc(100% - 90px)' }}>
         {rankedUsers.map((user, i) => {
-          const langColor = getLanguageColor(user.topLanguage);
+          const lc = langColor(user.topLanguage);
           const scorePct = (user.totalScore / maxScore) * 100;
           const rank = i + 1;
           return (
@@ -140,7 +142,7 @@ export function RankChart() {
                   </span>
                   <span
                     className="px-1 text-[5px] text-white flex-shrink-0"
-                    style={{ fontFamily: FONT, backgroundColor: langColor }}
+                    style={{ fontFamily: FONT, backgroundColor: lc }}
                   >
                     {user.topLanguage || '?'}
                   </span>
@@ -149,7 +151,7 @@ export function RankChart() {
                 <div className="w-full h-[4px] bg-[#222] mt-1">
                   <div
                     className="h-full"
-                    style={{ width: `${scorePct}%`, backgroundColor: langColor }}
+                    style={{ width: `${scorePct}%`, backgroundColor: lc }}
                   />
                 </div>
               </div>

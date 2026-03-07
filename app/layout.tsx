@@ -10,9 +10,9 @@ const pixelFont = Press_Start_2P({
 });
 
 export const metadata: Metadata = {
-  title: "Minecraft GitHub City",
+  title: "Git World",
   description:
-    "A 3D Minecraft-style city where every building is a real GitHub developer. Built by Ashusriwastav07.",
+    "Git World — A 3D city where every building is a real GitHub developer. Built by Ashusriwastav07.",
   icons: { icon: "/favicon.ico" },
 };
 

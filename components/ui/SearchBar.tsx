@@ -4,8 +4,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { useCityStore } from '@/lib/cityStore';
 import { addUserToCity } from '@/lib/cityStream';
+import { lookupSlimUser } from '@/lib/supabaseDb';
 import { slotToWorld } from '@/lib/cityLayout';
-import type { DeveloperProfile } from '@/types';
 
 const FONT = "'Press Start 2P', monospace";
 
@@ -16,35 +16,48 @@ export function SearchBar() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const getUserByLogin = useCityStore((s) => s.getUserByLogin);
-  const setFlyToTarget = useCityStore((s) => s.setFlyToTarget);
+  const setFlyTarget = useCityStore((s) => s.setFlyTarget);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
   const addUser = useCityStore((s) => s.addUser);
 
   const flyToSlot = useCallback(
     (slot: number) => {
       const world = slotToWorld(slot);
-      setFlyToTarget({ x: world.x, y: 0, z: world.z });
+      setFlyTarget({ x: world.x, y: 0, z: world.z });
     },
-    [setFlyToTarget]
+    [setFlyTarget]
   );
 
   const handleSearch = useCallback(async () => {
     const username = query.trim().toLowerCase();
     if (!username) return;
 
-    // Check if already in city
+    // Check if already in city (local store — instant)
     const existing = getUserByLogin(username);
     if (existing) {
       setSelectedUser(existing);
       flyToSlot(existing.citySlot);
       setStatus('idle');
-      setStatusMsg(`Welcome back, ${existing.login}! Slot #${existing.citySlot}`);
-      setTimeout(() => setStatusMsg(''), 4000);
+      setStatusMsg(`Found! Flying to ${existing.login}'s building — Slot #${existing.citySlot}`);
+      setTimeout(() => setStatusMsg(''), 5000);
       return;
     }
 
-    // Fetch from GitHub
+    // Quick DB check — user may exist in Supabase but not loaded locally
     setStatus('searching');
+    setStatusMsg('Searching...');
+    const dbUser = await lookupSlimUser(username);
+    if (dbUser) {
+      addUser(dbUser);
+      setSelectedUser(dbUser);
+      flyToSlot(dbUser.citySlot);
+      setStatus('idle');
+      setStatusMsg(`Found! Flying to ${dbUser.login}'s building — Slot #${dbUser.citySlot}`);
+      setTimeout(() => setStatusMsg(''), 5000);
+      return;
+    }
+
+    // Not in DB — fetch from GitHub
     setStatusMsg('Searching GitHub...');
 
     try {
@@ -53,7 +66,7 @@ export function SearchBar() {
       if (res.status === 404) {
         setStatus('notfound');
         setStatusMsg('GitHub user not found.');
-        setTimeout(() => { setStatus('idle'); setStatusMsg(''); }, 3000);
+        setTimeout(() => { setStatus('idle'); setStatusMsg(''); }, 4000);
         return;
       }
 
@@ -78,7 +91,7 @@ export function SearchBar() {
         return;
       }
 
-      const profile: DeveloperProfile = await res.json();
+      const profile = await res.json();
 
       // Add to city
       setStatus('adding');
@@ -90,8 +103,8 @@ export function SearchBar() {
         setSelectedUser(dev);
         flyToSlot(dev.citySlot);
         setStatus('idle');
-        setStatusMsg(`Joined GitHub City! Slot #${dev.citySlot}`);
-        setTimeout(() => setStatusMsg(''), 4000);
+        setStatusMsg(`${dev.login} just joined Git World! Slot #${dev.citySlot} is theirs forever.`);
+        setTimeout(() => setStatusMsg(''), 5000);
       } else {
         setStatus('error');
         setStatusMsg('Failed to add user.');
