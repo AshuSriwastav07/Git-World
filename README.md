@@ -259,9 +259,15 @@ Open [http://localhost:3000](http://localhost:3000) and your city will start loa
 
 ---
 
-## 👤 Built By
+## 👤 Built By & Contact
 
-**[Ashu Sriwastav](https://github.com/AshuSriwastav07)** — Developer from Delhi, India
+**Ashu Sriwastav** — Developer from Delhi, India
+
+**Contact:**
+- **Email:** [ashusriwastav07@gmail.com](mailto:ashusriwastav07@gmail.com)
+- **LinkedIn:** [ashu-sriwastav-949b09272](https://www.linkedin.com/in/ashu-sriwastav-949b09272/)
+- **Instagram:** [@_ashu_shrivastav](https://www.instagram.com/_ashu_shrivastav/)
+- **GitHub:** [AshuSriwastav07](https://github.com/AshuSriwastav07)
 
 If you like this project, give it a ⭐ on GitHub!
 
