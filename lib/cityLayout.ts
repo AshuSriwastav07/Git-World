@@ -31,10 +31,29 @@ function spiralCoords(slot: number): [number, number] {
   return [x, z];
 }
 
-// Slot → THREE.js world (x, z)
+// ── Park-aware slot mapping cache ──
+// Builds a list of valid (non-park) world positions in spiral order so that
+// every citySlot index maps to a position outside both Tech Park and SV Park.
+const _validWorldPos: { x: number; z: number }[] = [];
+let _validPosProbe = 0;
+
+function ensureValidPositions(needed: number) {
+  while (_validWorldPos.length < needed && _validPosProbe < 20000) {
+    const [gx, gz] = spiralCoords(_validPosProbe);
+    const wx = gx * SLOT_PITCH;
+    const wz = gz * SLOT_PITCH;
+    if (!isInsidePark(wx, wz)) {
+      _validWorldPos.push({ x: wx, z: wz });
+    }
+    _validPosProbe++;
+  }
+}
+
+// Slot → THREE.js world (x, z), skipping positions inside parks
 export function slotToWorld(slot: number): { x: number; z: number } {
-  const [gx, gz] = spiralCoords(slot);
-  return { x: gx * SLOT_PITCH, z: gz * SLOT_PITCH };
+  if (slot < 0) return { x: 0, z: 0 };
+  ensureValidPositions(slot + 1);
+  return _validWorldPos[slot] ?? { x: 0, z: 0 };
 }
 
 // Building height, width, depth, tier
@@ -84,13 +103,11 @@ export function getBuildingDimensions(
   };
 }
 
-// Ground plane size — tight for dense city feel
+// Ground plane size — slightly larger for growing city
 export function getGroundSize(userCount: number): number {
   const radius = Math.ceil(Math.sqrt(userCount)) * SLOT_PITCH * 0.6;
-  // Tighter multiplier: city fills the ground, minimal border
-  const dynamic = radius * 2.0 + Math.sqrt(userCount) * 1.8;
-  // Cover the park area at (-55, 55) but keep tight
-  return Math.max(dynamic, 160);
+  const dynamic = radius * 2.2 + Math.sqrt(userCount) * 2.0;
+  return Math.max(dynamic, 200);
 }
 
 // Score calculation
@@ -126,10 +143,27 @@ export function getTechParkWorldCenter(): { x: number; z: number } {
 
 // Park occupies a 50×50 region; check if a world position falls inside
 const PARK_HALF = 25;
+
+// Silicon Valley Park — compact round park embedded in the city
+export const SV_CENTER = { x: 75, z: 75 };
+export const SV_RADIUS = 80;
+
+// Trending Repositories District — southwest of city
+export const TRENDING_CENTER = { x: -120, z: 120 };
+export const TRENDING_HALF = 50; // 100×100 zone
+
 export function isInsidePark(wx: number, wz: number): boolean {
   const pc = getTechParkWorldCenter();
-  return (
+  const inTechPark =
     wx >= pc.x - PARK_HALF && wx <= pc.x + PARK_HALF &&
-    wz >= pc.z - PARK_HALF && wz <= pc.z + PARK_HALF
-  );
+    wz >= pc.z - PARK_HALF && wz <= pc.z + PARK_HALF;
+  // Round check for SV park
+  const dx = wx - SV_CENTER.x;
+  const dz = wz - SV_CENTER.z;
+  const inSVPark = (dx * dx + dz * dz) <= (SV_RADIUS + 2) * (SV_RADIUS + 2);
+  // Rectangle check for Trending District
+  const inTrending =
+    wx >= TRENDING_CENTER.x - TRENDING_HALF && wx <= TRENDING_CENTER.x + TRENDING_HALF &&
+    wz >= TRENDING_CENTER.z - TRENDING_HALF && wz <= TRENDING_CENTER.z + TRENDING_HALF;
+  return inTechPark || inSVPark || inTrending;
 }

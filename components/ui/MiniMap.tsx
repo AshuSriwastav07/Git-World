@@ -3,7 +3,7 @@
 
 import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useCityStore } from '@/lib/cityStore';
-import { slotToWorld, getTier, getGroundSize, getTechParkWorldCenter } from '@/lib/cityLayout';
+import { slotToWorld, getTier, getGroundSize, getTechParkWorldCenter, SV_CENTER, SV_RADIUS } from '@/lib/cityLayout';
 import { langColor } from '@/lib/textureGenerator';
 
 const MAP_SIZE = 180;
@@ -53,6 +53,18 @@ export function MiniMap() {
     const parkZ = (park.z + halfExtent) * scale - parkPx / 2;
     ctx.fillStyle = '#2d6a1e';
     ctx.fillRect(parkX, parkZ, parkPx, parkPx);
+
+    // Draw SV park circle
+    const svX = (SV_CENTER.x + halfExtent) * scale;
+    const svZ = (SV_CENTER.z + halfExtent) * scale;
+    const svR = SV_RADIUS * scale;
+    ctx.fillStyle = '#1e5a2d';
+    ctx.beginPath();
+    ctx.arc(svX, svZ, svR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#76b900';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
     // Draw buildings as colored dots
     for (const b of dots) {

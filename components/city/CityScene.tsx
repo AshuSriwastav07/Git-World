@@ -11,6 +11,9 @@ import { Airplane } from './Airplane';
 import CameraController from './CameraController';
 import GodRaySpotlight from './GodRaySpotlight';
 import FireworkSystem from './FireworkSystem';
+import { SiliconValleyPark } from './SiliconValleyPark';
+import { TrendingDistrict } from './TrendingDistrict';
+import { SceneErrorBoundary } from './SceneErrorBoundary';
 
 function SceneContent() {
   const isAirplaneMode = useCityStore((s) => s.isAirplaneMode);
@@ -54,7 +57,19 @@ function SceneContent() {
       <CityGrid />
 
       {/* Tech Park */}
-      <TechPark />
+      <SceneErrorBoundary name="TechPark">
+        <TechPark />
+      </SceneErrorBoundary>
+
+      {/* Silicon Valley Park */}
+      <SceneErrorBoundary name="SiliconValleyPark">
+        <SiliconValleyPark />
+      </SceneErrorBoundary>
+
+      {/* Trending Repositories District */}
+      <SceneErrorBoundary name="TrendingDistrict">
+        <TrendingDistrict />
+      </SceneErrorBoundary>
 
       {/* Airplane */}
       {isAirplaneMode && <Airplane />}

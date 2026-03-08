@@ -13,6 +13,6 @@ export function LoadingScreen() {
 
   // IntroOverlay watches isLoading + user count and drives intro stages.
   // LoadingScreen is retained as a mount-point (no visual output).
-  if (introStage !== 'black') return null;
+  if (introStage !== 'loading') return null;
   return null;
 }

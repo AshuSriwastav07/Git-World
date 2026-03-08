@@ -27,6 +27,7 @@ export default function CameraController() {
   const setRankChartOpen = useCityStore(s => s.setRankChartOpen);
   const isRankChartOpen  = useCityStore(s => s.isRankChartOpen);
   const introStage       = useCityStore(s => s.introStage);
+  const introStartTime   = useCityStore(s => s.introStartTime);
   const userInteracted   = useCityStore(s => s.userInteracted);
   const setUserInteracted = useCityStore(s => s.setUserInteracted);
 
@@ -129,6 +130,34 @@ export default function CameraController() {
   useFrame((_, rawDelta) => {
     if (isAirplaneMode) return;
     const delta = Math.min(rawDelta, 0.06);
+
+    // ── Cinematic camera sweep during intro ──
+    if ((introStage === 'cinematic' || introStage === 'loading') && introStartTime > 0) {
+      const elapsed = (Date.now() - introStartTime) / 1000; // seconds
+      const SWEEP_DURATION = 12; // match cinematic duration
+      const t = Math.min(elapsed / SWEEP_DURATION, 1);
+
+      // Camera path: start high above, sweep down in an orbit
+      const angle = t * Math.PI * 1.8; // ~320 degrees orbit
+      const startRadius = 200, endRadius = 90;
+      const startHeight = 180, endHeight = 55;
+      const radius = startRadius + (endRadius - startRadius) * easeInOutCubic(t);
+      const height = startHeight + (endHeight - startHeight) * easeInOutCubic(t);
+
+      camera.position.set(
+        Math.cos(angle) * radius,
+        height,
+        Math.sin(angle) * radius
+      );
+
+      // Look at the city center, slightly above ground
+      const lookY = 5 + (1 - t) * 15; // start looking higher, settle at y=5
+      if (controlsRef.current) {
+        controlsRef.current.target.set(0, lookY, 0);
+        controlsRef.current.update();
+      }
+      return; // skip normal camera logic during cinematic
+    }
 
     // ── WASD panning ──
     if (controlsRef.current && !flyAnim.current.active) {

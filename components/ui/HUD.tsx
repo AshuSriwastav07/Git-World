@@ -4,6 +4,7 @@
 import { useCityStore } from '@/lib/cityStore';
 import { SearchBar } from './SearchBar';
 import { ProfileModal } from './ProfileModal';
+import { RepoProfilePanel } from './RepoProfilePanel';
 import { RankChart } from './RankChart';
 import { MiniMap } from './MiniMap';
 import { TopFiveWidget } from './TopFiveWidget';
@@ -15,6 +16,7 @@ import { GitHubStars } from './GitHubStars';
 import { JoinToast } from './JoinToast';
 import { IntroOverlay } from './IntroOverlay';
 import { IntroButtons } from './IntroButtons';
+import { GitWorldLogo } from './GitWorldLogo';
 
 const FONT = "'Press Start 2P', monospace";
 
@@ -35,6 +37,7 @@ export function HUD() {
       <IntroButtons />
       <LoadingScreen />
       <ProfileModal />
+      <RepoProfilePanel />
       <RankChart />
       <AirplaneHUD />
       <JoinToast />
@@ -44,9 +47,7 @@ export function HUD() {
       <div className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2 bg-[#0d0d1acc] border-b-2 border-[#333] select-none">
         {/* Left: Title */}
         <div className="flex items-center gap-3">
-          <h1 className="text-[10px] md:text-[12px] text-[#4ade80]" style={{ fontFamily: FONT }}>
-            🧱 GIT WORLD
-          </h1>
+          <GitWorldLogo size="md" />
         </div>
         {/* Center: user count + live count */}
         <div className="hidden md:flex items-center gap-2">

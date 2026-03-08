@@ -16,8 +16,12 @@ interface CityStoreState {
   loadingProgress: number;
   loadingMessage: string;
   flyTarget: { x: number; y: number; z: number } | null;
-  /** Intro stage: 'black' | 'logo' | 'city' | 'burst' | 'buttons' | 'done' */
-  introStage: 'black' | 'logo' | 'city' | 'burst' | 'buttons' | 'done';
+  /** Intro stage: 'loading' | 'cinematic' | 'title' | 'buttons' | 'done' */
+  introStage: 'loading' | 'cinematic' | 'title' | 'buttons' | 'done';
+  /** Timestamp when cinematic stage started (for building rise + camera sync) */
+  introStartTime: number;
+  /** 0..1 progress of the cinematic intro */
+  introProgress: number;
   /** True when user has interacted (clicked/touched/keypress) — stops auto-rotate */
   userInteracted: boolean;
 
@@ -36,6 +40,8 @@ interface CityStoreState {
   getTopUsers: (count: number) => SlimUser[];
   getRandomUser: () => SlimUser | undefined;
   setIntroStage: (stage: CityStoreState['introStage']) => void;
+  setIntroStartTime: (time: number) => void;
+  setIntroProgress: (progress: number) => void;
   setUserInteracted: () => void;
 }
 
@@ -69,7 +75,9 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   loadingProgress: 0,
   loadingMessage: 'Initializing...',
   flyTarget: null,
-  introStage: 'done',
+  introStage: 'loading',
+  introStartTime: 0,
+  introProgress: 0,
   userInteracted: false,
 
   addUser: (user: SlimUser) => {
@@ -135,6 +143,10 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   },
 
   setIntroStage: (stage) => set({ introStage: stage }),
+
+  setIntroStartTime: (time) => set({ introStartTime: time }),
+
+  setIntroProgress: (progress) => set({ introProgress: progress }),
 
   setUserInteracted: () => set({ userInteracted: true }),
 }));

@@ -9,6 +9,13 @@ import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 
 const MAX_BUILDINGS = 8000;
 
+/* ── Easing: slight overshoot for "pop-up" feel ── */
+function easeOutBack(t: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
 /* ── Neutral window texture: white windows on black, tinted by instanceColor ── */
 function createWindowTexture(night: boolean): THREE.CanvasTexture {
   const S = 32;
@@ -174,6 +181,7 @@ function Tier1Crown() {
    CityGrid — main export
    Uses TWO InstancedMeshes: body (textured) + glow (additive blending).
    Individual Building components are eliminated for 60 fps at 5000+ buildings.
+   During cinematic intro, buildings rise from ground outward from center.
    ════════════════════════════════════════════════════════════════════════════ */
 export function CityGrid() {
   const bodyRef = useRef<THREE.InstancedMesh>(null);
@@ -181,11 +189,17 @@ export function CityGrid() {
 
   const users        = useCityStore(s => s.users);
   const sortedLogins = useCityStore(s => s.sortedLogins);
+  const selectedUser = useCityStore(s => s.selectedUser);
   const selectUser   = useCityStore(s => s.selectUser);
   const isNight      = useCityStore(s => s.isNight);
+  const introStage   = useCityStore(s => s.introStage);
+  const introStartTime = useCityStore(s => s.introStartTime);
+  const setIntroProgress = useCityStore(s => s.setIntroProgress);
 
   const loginsByInstance = useRef<string[]>([]);
   const instanceCount = useRef(0);
+  /* Store per-building data for rise animation */
+  const buildingData = useRef<{ pos: THREE.Vector3; width: number; height: number; depth: number; dist: number }[]>([]);
 
   /* Shared geometry — a unit cube scaled per instance */
   const boxGeo = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
@@ -218,7 +232,23 @@ export function CityGrid() {
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
     const logins: string[] = [];
+    const bData: typeof buildingData.current = [];
     let count = 0;
+
+    const isDone = introStage === 'done' || introStage === 'buttons';
+
+    /* Pre-calculate selected building position for nearby-hiding */
+    const HIDE_RADIUS = 18; // world units — buildings within this radius of selected are hidden
+    let selPos: { x: number; z: number } | null = null;
+    let selLogin: string | null = null;
+    if (selectedUser) {
+      const idx = sortedLogins.indexOf(selectedUser.login.toLowerCase());
+      const rank = idx >= 0 ? idx + 1 : (selectedUser.cityRank ?? 1);
+      const slot = selectedUser.citySlot ?? (rank - 1);
+      const p = slotToWorld(slot);
+      selPos = { x: p.x, z: p.z };
+      selLogin = selectedUser.login.toLowerCase();
+    }
 
     sortedLogins.forEach((login, index) => {
       const user = users.get(login);
@@ -229,12 +259,48 @@ export function CityGrid() {
       if (isInsidePark(pos.x, pos.z)) return;
       const dims = getBuildingDimensions(rank, slot, user);
 
-      dummy.position.set(pos.x, dims.height / 2, pos.z);
-      dummy.scale.set(dims.width, dims.height, dims.depth);
+      const dist = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
+
+      /* Hide nearby buildings when one is selected (except the selected one itself) */
+      if (selPos && login !== selLogin) {
+        const dx = pos.x - selPos.x;
+        const dz = pos.z - selPos.z;
+        const distToSel = Math.sqrt(dx * dx + dz * dz);
+        if (distToSel < HIDE_RADIUS && distToSel > 0.1) {
+          // Push a dummy hidden instance (scale 0) to keep index mapping consistent
+          dummy.position.set(pos.x, -1000, pos.z);
+          dummy.scale.set(0, 0, 0);
+          dummy.updateMatrix();
+          body.setMatrixAt(count, dummy.matrix);
+          glow.setMatrixAt(count, dummy.matrix);
+          const langCol = LANGUAGE_COLORS[user.topLanguage] ?? LANGUAGE_COLORS.default;
+          color.set(langCol);
+          body.setColorAt(count, color);
+          glow.setColorAt(count, color);
+          bData.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), width: dims.width, height: dims.height, depth: dims.depth, dist });
+          logins.push(login);
+          count++;
+          return;
+        }
+      }
+
+      if (isDone) {
+        // Final position — full height
+        dummy.position.set(pos.x, dims.height / 2, pos.z);
+        dummy.scale.set(dims.width, dims.height, dims.depth);
+      } else {
+        // During intro — start at 0 height (will be animated in useFrame)
+        dummy.position.set(pos.x, 0.01, pos.z);
+        dummy.scale.set(dims.width, 0.02, dims.depth);
+      }
       dummy.updateMatrix();
       body.setMatrixAt(count, dummy.matrix);
 
-      dummy.scale.set(dims.width + 0.35, dims.height + 0.1, dims.depth + 0.35);
+      if (isDone) {
+        dummy.scale.set(dims.width + 0.35, dims.height + 0.1, dims.depth + 0.35);
+      } else {
+        dummy.scale.set(dims.width + 0.35, 0.02, dims.depth + 0.35);
+      }
       dummy.updateMatrix();
       glow.setMatrixAt(count, dummy.matrix);
 
@@ -243,6 +309,7 @@ export function CityGrid() {
       body.setColorAt(count, color);
       glow.setColorAt(count, color);
 
+      bData.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), width: dims.width, height: dims.height, depth: dims.depth, dist });
       logins.push(login);
       count++;
     });
@@ -258,11 +325,75 @@ export function CityGrid() {
 
     loginsByInstance.current = logins;
     instanceCount.current = count;
-  }, [users, sortedLogins, isNight]);
+    buildingData.current = bData;
+  }, [users, sortedLogins, isNight, introStage, selectedUser]);
+
+  /* ── Rise animation during cinematic intro ── */
+  const RISE_DURATION = 10000; // 10 seconds for all buildings to rise
+  const MAX_DIST_DELAY = 0.6;  // fraction of rise time used for distance-based delay
+
+  useFrame(() => {
+    if (introStage !== 'cinematic' && introStage !== 'loading') return;
+    const body = bodyRef.current;
+    const glow = glowRef.current;
+    if (!body || !glow || introStartTime === 0) return;
+
+    const elapsed = Date.now() - introStartTime;
+    const globalProgress = Math.min(elapsed / RISE_DURATION, 1);
+    setIntroProgress(globalProgress);
+
+    const count = instanceCount.current;
+    if (count === 0) return;
+
+    // Find max distance for normalization
+    let maxDist = 1;
+    for (let i = 0; i < count; i++) {
+      if (buildingData.current[i].dist > maxDist) maxDist = buildingData.current[i].dist;
+    }
+
+    const dummy = new THREE.Object3D();
+    let anyChanged = false;
+
+    for (let i = 0; i < count; i++) {
+      const bd = buildingData.current[i];
+      // Buildings closer to center rise first
+      const normalizedDist = bd.dist / maxDist;
+      const delayFraction = normalizedDist * MAX_DIST_DELAY;
+      const localProgress = Math.max(0, Math.min((globalProgress - delayFraction) / (1 - MAX_DIST_DELAY), 1));
+
+      // Eased progress for smooth rise
+      const eased = easeOutBack(localProgress);
+      const currentHeight = bd.height * eased;
+
+      if (currentHeight > 0.02) {
+        dummy.position.set(bd.pos.x, currentHeight / 2, bd.pos.z);
+        dummy.scale.set(bd.width, currentHeight, bd.depth);
+        dummy.updateMatrix();
+        body.setMatrixAt(i, dummy.matrix);
+
+        dummy.scale.set(bd.width + 0.35, currentHeight + 0.1, bd.depth + 0.35);
+        dummy.updateMatrix();
+        glow.setMatrixAt(i, dummy.matrix);
+        anyChanged = true;
+      }
+    }
+
+    if (anyChanged) {
+      body.instanceMatrix.needsUpdate = true;
+      glow.instanceMatrix.needsUpdate = true;
+    }
+  });
 
   /* ── Click handler ── */
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
+    // During intro, skip it on click
+    if (introStage !== 'done' && introStage !== 'buttons') {
+      useCityStore.getState().setIntroStage('done');
+      useCityStore.getState().setIntroProgress(1);
+      useCityStore.getState().setUserInteracted();
+      return;
+    }
     if (e.instanceId !== undefined) {
       const login = loginsByInstance.current[e.instanceId];
       if (login) {
@@ -270,7 +401,7 @@ export function CityGrid() {
         if (user) selectUser(user);
       }
     }
-  }, [selectUser]);
+  }, [selectUser, introStage]);
 
   /* ── Ground ── */
   const groundSize = getGroundSize(sortedLogins.length);

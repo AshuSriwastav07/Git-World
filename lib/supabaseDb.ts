@@ -360,19 +360,34 @@ async function doUpsert(userData: Omit<CityUser, 'citySlot' | 'cityRank' | 'firs
 
   const citySlot: number = slotData;
 
-  // Insert new user
-  const { data, error } = await sb
-    .from('city_users')
-    .insert({
-      login:             userData.login.toLowerCase(),
-      ...cleanPayload,
-      github_created_at: userData.githubCreatedAt ?? '',
-      city_slot:         citySlot,
-      city_rank:         999999,
-      added_by:          userData.addedBy ?? 'discovery',
-    })
-    .select()
-    .single();
+  // Insert new user (retry once on transient JSON errors)
+  const insertPayload = {
+    login:             userData.login.toLowerCase(),
+    ...cleanPayload,
+    github_created_at: userData.githubCreatedAt || new Date().toISOString(),
+    city_slot:         citySlot,
+    city_rank:         999999,
+    added_by:          userData.addedBy ?? 'discovery',
+  };
+
+  let data: Record<string, unknown> | null = null;
+  let error: { message: string } | null = null;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await sb
+      .from('city_users')
+      .insert(insertPayload)
+      .select()
+      .single();
+    data = res.data;
+    error = res.error;
+    if (!error) break;
+    if (error.message.includes('Empty or invalid json') && attempt === 0) {
+      await new Promise(r => setTimeout(r, 200));
+      continue;
+    }
+    break;
+  }
 
   if (error) {
     // Handle race condition: duplicate key means another request inserted first

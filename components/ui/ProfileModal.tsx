@@ -4,7 +4,7 @@
 import { useCityStore } from '@/lib/cityStore';
 import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 import { useEffect, useCallback, useState } from 'react';
-import { slotToWorld, getTier } from '@/lib/cityLayout';
+import { slotToWorld, getBuildingDimensions, getTier } from '@/lib/cityLayout';
 import { loadUserProfile } from '@/lib/supabaseDb';
 import type { SlimUser, CityUser } from '@/lib/supabaseDb';
 
@@ -13,6 +13,7 @@ const FONT = "'Press Start 2P', monospace";
 export function ProfileModal() {
   const selectedUser   = useCityStore((s) => s.selectedUser);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
+  const setFlyTarget   = useCityStore((s) => s.setFlyTarget);
   const users          = useCityStore((s) => s.users);
   const [fullProfile, setFullProfile] = useState<CityUser | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -151,6 +152,27 @@ export function ProfileModal() {
                 <span>Slot: #{u.citySlot}</span>
               </div>
             </div>
+
+            {/* Find Building button */}
+            {u.citySlot > 0 && (
+              <button
+                onClick={() => {
+                  const pos = slotToWorld(u.citySlot);
+                  const dims = getBuildingDimensions(u.cityRank, u.citySlot, u);
+                  setFlyTarget({ x: pos.x, y: dims.height / 2, z: pos.z });
+                  close();
+                }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'center',
+                  background: 'rgba(245,197,24,0.15)', border: '1px solid #f5c518',
+                  color: '#f5c518', padding: '8px', fontSize: '8px',
+                  cursor: 'pointer', fontFamily: FONT, marginBottom: '12px',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                🏗️ FIND BUILDING →
+              </button>
+            )}
 
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
