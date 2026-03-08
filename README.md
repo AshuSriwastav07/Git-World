@@ -1,5 +1,5 @@
-<img width="1024" height="1024" alt="Logo" src="https://github.com/user-attachments/assets/7bdecb3e-8486-4091-8fad-8f1600b3eecb" /><img width="1536" height="1024" alt="28f6d47e-0a65-4402-9a66-3b04bb1a38a3" src="https://github.com/user-attachments/assets/d565a2b1-e08a-4c02-88e4-fb639fad813b" />
-<img width="1024" height="1024" alt="Logo" src="https://github.com/user-attachments/assets/87683918-0fdc-4f3d-9f44-5811233c50c2" />
+<img width="1536" height="1024" alt="28f6d47e-0a65-4402-9a66-3b04bb1a38a3" src="https://github.com/user-attachments/assets/d565a2b1-e08a-4c02-88e4-fb639fad813b" />
+<img width="200" height="200" alt="Logo" src="https://github.com/user-attachments/assets/87683918-0fdc-4f3d-9f44-5811233c50c2" />
 
 # 🧱 Git World — Every Developer Has a Building
 
