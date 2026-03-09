@@ -5,6 +5,7 @@
 > **A 3D Minecraft-style city where every GitHub developer becomes a building.**
 > The more you code, the taller your building grows. Explore thousands of developer buildings, fly through the city, and find your place in the skyline.
 
+
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![Three.js](https://img.shields.io/badge/Three.js-0.183-black?logo=three.js)
