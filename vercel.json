@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/daily-refresh",
-      "schedule": "50 6 * * *"
+      "schedule": "55 6 * * *"
     },
     {
       "path": "/api/cron/recalculate-ranks",
-      "schedule": "0 4 * * *"
+      "schedule": "0 7 * * *"
     }
   ]
 }
