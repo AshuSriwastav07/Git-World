@@ -108,7 +108,7 @@ async function fetchOrgMembers(org: string): Promise<OrgMember[]> {
   const members: OrgMember[] = [];
   let page = 1;
 
-  while (page <= 10) { // safety cap at 1000 members
+  while (page <= 3) { // safety cap at 300 members (we only need ~50 candidates)
     const url = `https://api.github.com/orgs/${encodeURIComponent(org)}/members?filter=all&role=member&per_page=100&page=${page}`;
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -148,6 +148,42 @@ async function fetchOrgMembers(org: string): Promise<OrgMember[]> {
   }
 
   return members;
+}
+
+// ── Quick-score: single /users call for pre-ranking (1 API call) ─────────────
+
+interface QuickScore {
+  login: string;
+  followers: number;
+  publicRepos: number;
+  company: string;
+  avatarUrl: string;
+  score: number;
+}
+
+async function quickScoreUser(login: string): Promise<QuickScore | null> {
+  try {
+    const res = await githubFetch(
+      `https://api.github.com/users/${encodeURIComponent(login)}`,
+      { signal: AbortSignal.timeout(5000) }
+    );
+    if (!res.ok) return null;
+    const user = await res.json();
+    if (user.type !== 'User') return null;
+    if (!user.avatar_url) return null;
+    if ((user.public_repos ?? 0) === 0) return null;
+
+    return {
+      login: user.login,
+      followers: user.followers || 0,
+      publicRepos: user.public_repos || 0,
+      company: user.company || '',
+      avatarUrl: user.avatar_url || '',
+      score: (user.followers || 0) * 2 + (user.public_repos || 0),
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ── Fetch full GitHub profile for enrichment ────────────────────────────────
@@ -301,40 +337,55 @@ export async function POST() {
         }
       }
 
-      // Filter: type=User, not a bot
-      const validMembers = allMembers.filter(
-        m => m.member.type === 'User' && !isBot(m.member.login)
-      );
-      log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter`);
+      // Filter: type=User, not a bot, cap at 50 candidates
+      const validMembers = allMembers
+        .filter(m => m.member.type === 'User' && !isBot(m.member.login))
+        .slice(0, 50);
+      log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter (capped at 50)`);
 
-      // Fetch profiles in batches of 5
+      // Step A: Quick-score in batches of 10 (1 API call each)
+      const quickScored: { login: string; qs: QuickScore; source: string }[] = [];
+
+      for (let i = 0; i < validMembers.length; i += 10) {
+        const batch = validMembers.slice(i, i + 10);
+        const results = await Promise.all(batch.map(m => quickScoreUser(m.member.login)));
+
+        for (let j = 0; j < results.length; j++) {
+          const qs = results[j];
+          if (!qs) continue;
+
+          const entry = batch[j];
+
+          // For search-sourced users, verify company field
+          if (entry.source === 'profile_search' && qs.company) {
+            const profileCo = qs.company.toLowerCase().replace(/^@/, '');
+            const matches = config.profileCompanyMatch.some(
+              match => profileCo.includes(match)
+            );
+            if (!matches) continue;
+          }
+
+          quickScored.push({ login: qs.login, qs, source: entry.source });
+        }
+      }
+
+      // Take top 35 by quick score for full profile fetch
+      quickScored.sort((a, b) => b.qs.score - a.qs.score);
+      const topCandidates = quickScored.slice(0, 35);
+      log.push(`Phase 1: ${company} — ${quickScored.length} quick-scored, top ${topCandidates.length} selected for full profile`);
+
+      // Step B: Full profile fetch in batches of 10 (repos + events)
       const scored: { login: string; profile: ProfileData; score: number; source: string }[] = [];
 
-      for (let i = 0; i < validMembers.length; i += 5) {
-        const batch = validMembers.slice(i, i + 5);
-        const profiles = await Promise.all(batch.map(m => fetchProfile(m.member.login)));
+      for (let i = 0; i < topCandidates.length; i += 10) {
+        const batch = topCandidates.slice(i, i + 10);
+        const profiles = await Promise.all(batch.map(c => fetchProfile(c.login)));
 
         for (let j = 0; j < profiles.length; j++) {
           const profile = profiles[j];
           if (!profile) continue;
-
-          const entry = batch[j];
-
-          // For search-sourced users, verify their profile company field
-          if (entry.source === 'profile_search' && profile.company) {
-            const profileCo = profile.company.toLowerCase().replace(/^@/, '');
-            const matches = config.profileCompanyMatch.some(
-              match => profileCo.includes(match)
-            );
-            if (!matches) {
-              log.push(`Phase 1: ${company} — skipping ${profile.login} (company: '${profile.company}' doesn't match)`);
-              continue;
-            }
-          }
-
-          // Ranking score: followers×2 + total_stars×1
           const score = (profile.followers * 2) + profile.totalStars;
-          scored.push({ login: profile.login, profile, score, source: entry.source });
+          scored.push({ login: profile.login, profile, score, source: batch[j].source });
         }
       }
 
@@ -342,7 +393,7 @@ export async function POST() {
       scored.sort((a, b) => b.score - a.score);
       companyRanked.set(company, scored.slice(0, 30));
 
-      log.push(`Phase 1: ${company} — ${scored.length} profiles scored, top ${Math.min(scored.length, 30)} selected`);
+      log.push(`Phase 1: ${company} — ${scored.length} full profiles, top ${Math.min(scored.length, 30)} selected`);
     }
 
     // ── PHASE 2: Cross-company deduplication ───────────────────────────────
