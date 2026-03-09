@@ -14,13 +14,36 @@ import { getSupabaseServer } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-// ── GitHub org names for each company ───────────────────────────────────────
+// ── Company config: multiple orgs + search fallback terms per company ────────
 
-const COMPANY_ORGS: Record<string, string> = {
-  apple: 'apple',
-  google: 'google',
-  nvidia: 'NVIDIA',
-  meta: 'facebook',
+interface CompanySource {
+  orgs: string[];
+  searchTerms: string[];
+  /** Substrings to match against a GitHub profile's `company` field */
+  profileCompanyMatch: string[];
+}
+
+const COMPANY_CONFIG: Record<string, CompanySource> = {
+  apple: {
+    orgs: ['apple'],
+    searchTerms: ['Apple'],
+    profileCompanyMatch: ['apple'],
+  },
+  google: {
+    orgs: ['google', 'GoogleCloudPlatform'],
+    searchTerms: ['Google'],
+    profileCompanyMatch: ['google'],
+  },
+  nvidia: {
+    orgs: ['NVIDIA-AI-IOT', 'NVIDIAGameWorks', 'NVIDIA-Omniverse'],
+    searchTerms: ['NVIDIA'],
+    profileCompanyMatch: ['nvidia'],
+  },
+  meta: {
+    orgs: ['facebookresearch', 'meta-llama'],
+    searchTerms: ['Meta', 'Facebook'],
+    profileCompanyMatch: ['meta', 'facebook'],
+  },
 };
 
 const LANGUAGE_LIST = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Rust', 'Go', 'C++', 'Kotlin'];
@@ -241,20 +264,47 @@ export async function POST() {
     // company → { login, profile, score, source }[]
     const companyRanked = new Map<string, { login: string; profile: ProfileData; score: number; source: string }[]>();
 
-    for (const [company, orgName] of Object.entries(COMPANY_ORGS)) {
-      let members = await fetchOrgMembers(orgName);
-      let source = 'org_member';
-      log.push(`Phase 1: ${company} (org: ${orgName}) — ${members.length} public members fetched`);
+    for (const [company, config] of Object.entries(COMPANY_CONFIG)) {
+      const seenLogins = new Set<string>();
+      let allMembers: { member: OrgMember; source: string; orgName: string }[] = [];
 
-      // Fallback: if org API returns 0 members, search by company name
-      if (members.length === 0) {
-        members = await searchUsersByCompany(orgName);
-        source = 'profile_search';
-        log.push(`Phase 1: ${company} — fallback search returned ${members.length} users`);
+      // Step 1: Try each org in the list
+      for (const orgName of config.orgs) {
+        const orgMembers = await fetchOrgMembers(orgName);
+        log.push(`Phase 1: ${company} — org '${orgName}' returned ${orgMembers.length} members`);
+        for (const m of orgMembers) {
+          const key = m.login.toLowerCase();
+          if (!seenLogins.has(key)) {
+            seenLogins.add(key);
+            allMembers.push({ member: m, source: 'org_member', orgName });
+          }
+        }
       }
 
-      // Filter: type=User, not a bot, public_repos > 0 (checked in fetchProfile)
-      const validMembers = members.filter(m => m.type === 'User' && !isBot(m.login));
+      log.push(`Phase 1: ${company} — ${seenLogins.size} unique members after all orgs`);
+
+      // Step 2: If still below 30, supplement with search queries
+      if (seenLogins.size < 30) {
+        for (const term of config.searchTerms) {
+          if (seenLogins.size >= 60) break; // enough candidates
+          const searchMembers = await searchUsersByCompany(term);
+          let added = 0;
+          for (const m of searchMembers) {
+            const key = m.login.toLowerCase();
+            if (!seenLogins.has(key)) {
+              seenLogins.add(key);
+              allMembers.push({ member: m, source: 'profile_search', orgName: term });
+              added++;
+            }
+          }
+          log.push(`Phase 1: ${company} — search '${term}' added ${added} new users`);
+        }
+      }
+
+      // Filter: type=User, not a bot
+      const validMembers = allMembers.filter(
+        m => m.member.type === 'User' && !isBot(m.member.login)
+      );
       log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter`);
 
       // Fetch profiles in batches of 5
@@ -262,15 +312,29 @@ export async function POST() {
 
       for (let i = 0; i < validMembers.length; i += 5) {
         const batch = validMembers.slice(i, i + 5);
-        const profiles = await Promise.all(batch.map(m => fetchProfile(m.login)));
+        const profiles = await Promise.all(batch.map(m => fetchProfile(m.member.login)));
 
         for (let j = 0; j < profiles.length; j++) {
           const profile = profiles[j];
           if (!profile) continue;
 
+          const entry = batch[j];
+
+          // For search-sourced users, verify their profile company field
+          if (entry.source === 'profile_search' && profile.company) {
+            const profileCo = profile.company.toLowerCase().replace(/^@/, '');
+            const matches = config.profileCompanyMatch.some(
+              match => profileCo.includes(match)
+            );
+            if (!matches) {
+              log.push(`Phase 1: ${company} — skipping ${profile.login} (company: '${profile.company}' doesn't match)`);
+              continue;
+            }
+          }
+
           // Ranking score: followers×2 + total_stars×1
           const score = (profile.followers * 2) + profile.totalStars;
-          scored.push({ login: profile.login, profile, score, source });
+          scored.push({ login: profile.login, profile, score, source: entry.source });
         }
       }
 
@@ -278,7 +342,7 @@ export async function POST() {
       scored.sort((a, b) => b.score - a.score);
       companyRanked.set(company, scored.slice(0, 30));
 
-      log.push(`Phase 1: ${company} — ${scored.length} profiles fetched, top 30 selected`);
+      log.push(`Phase 1: ${company} — ${scored.length} profiles scored, top ${Math.min(scored.length, 30)} selected`);
     }
 
     // ── PHASE 2: Cross-company deduplication ───────────────────────────────
@@ -341,7 +405,7 @@ export async function POST() {
             company,
             contributions: entry.score,
             membership_verified: entry.source === 'org_member',
-            org_name: COMPANY_ORGS[company],
+            org_name: COMPANY_CONFIG[company]?.orgs[0] ?? company,
             source: entry.source,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'login' });
@@ -423,7 +487,7 @@ export async function POST() {
     // ── Build result summary ───────────────────────────────────────────────
 
     const companySummary: Record<string, { count: number; logins: string[] }> = {};
-    for (const company of Object.keys(COMPANY_ORGS)) {
+    for (const company of Object.keys(COMPANY_CONFIG)) {
       const entries = finalContribs.filter(e => e.company === company);
       companySummary[company] = {
         count: entries.length,

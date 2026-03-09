@@ -60,11 +60,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: contribRes.error.message }, { status: 500 });
   }
 
-  // Group company contributors
+  // Group company contributors (cap at 30 per company)
   const companies: Record<string, unknown[]> = { apple: [], google: [], nvidia: [], meta: [] };
   for (const row of (contribRes.data ?? []) as Record<string, unknown>[]) {
     const c = (row.company as string) ?? '';
-    if (companies[c]) {
+    if (companies[c] && companies[c].length < 30) {
       companies[c].push({
         login: row.login as string,
         avatarUrl: (row.avatar_url as string) ?? '',
