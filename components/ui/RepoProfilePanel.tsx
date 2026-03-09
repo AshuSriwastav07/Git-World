@@ -1,12 +1,25 @@
-// RepoProfilePanel — Side panel for trending repository details
+// RepoProfilePanel — Side panel (desktop) / Bottom sheet (mobile) for trending repository details
 'use client';
 
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useTrendingStore, type TrendingRepo } from '@/lib/trendingStore';
 import { useCityStore } from '@/lib/cityStore';
 import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 
 const FONT = "'Press Start 2P', monospace";
+const SWIPE_THRESHOLD = 80;
+
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 768px)');
+    setMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+  return mobile;
+}
 
 function formatNum(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -50,8 +63,34 @@ export function RepoProfilePanel() {
   const repoPanelOpen = useTrendingStore(s => s.repoPanelOpen);
   const selectUser = useCityStore(s => s.selectUser);
   const getUserByLogin = useCityStore(s => s.getUserByLogin);
+  const isMobile = useIsMobile();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const touchDelta = useRef(0);
 
   const close = useCallback(() => closeRepoPanel(), [closeRepoPanel]);
+
+  // Swipe-to-close (mobile: swipe down)
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    touchDelta.current = 0;
+  }, []);
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const dy = e.touches[0].clientY - touchStartY.current;
+    touchDelta.current = Math.max(0, dy);
+    if (panelRef.current && isMobile) {
+      panelRef.current.style.transform = `translateY(${touchDelta.current}px)`;
+      panelRef.current.style.transition = 'none';
+    }
+  }, [isMobile]);
+  const handleTouchEnd = useCallback(() => {
+    if (panelRef.current) {
+      panelRef.current.style.transition = 'transform 0.35s cubic-bezier(0.4,0,0.2,1)';
+      panelRef.current.style.transform = '';
+    }
+    if (isMobile && touchDelta.current > SWIPE_THRESHOLD) close();
+    touchDelta.current = 0;
+  }, [isMobile, close]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -87,16 +126,21 @@ export function RepoProfilePanel() {
 
   return (
     <>
-      {/* SIDE PANEL */}
-      <div style={{
+      {/* SIDE PANEL (desktop) / BOTTOM SHEET (mobile) */}
+      <div
+        ref={panelRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
         position: 'fixed',
-        top: 0,
-        right: 0,
-        width: '380px',
-        height: '100vh',
+        ...(isMobile
+          ? { bottom: 0, left: 0, width: '100%', height: '75vh', borderRadius: '16px 16px 0 0', borderTop: `2px solid ${langColor}`,
+              transform: repoPanelOpen ? 'translateY(0)' : 'translateY(100%)' }
+          : { top: 0, right: 0, width: '380px', height: '100vh', borderLeft: `2px solid ${langColor}`,
+              transform: repoPanelOpen ? 'translateX(0)' : 'translateX(100%)' }
+        ),
         background: 'rgba(8, 5, 20, 0.97)',
-        borderLeft: `2px solid ${langColor}`,
-        transform: repoPanelOpen ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.35s cubic-bezier(0.4,0,0.2,1)',
         zIndex: 1001,
         overflowY: 'auto',
@@ -104,12 +148,21 @@ export function RepoProfilePanel() {
         display: 'flex',
         flexDirection: 'column',
       }}>
+        {/* Mobile drag handle */}
+        {isMobile && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px' }}>
+            <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#555' }} />
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ padding: '16px', borderBottom: `1px solid ${langColor}44`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ color: langColor, fontSize: '10px', letterSpacing: '0.1em' }}>
             REPO PROFILE
           </span>
-          <button onClick={close} style={{ background: 'none', border: 'none', color: langColor, cursor: 'pointer', fontSize: '18px', fontFamily: 'monospace' }}>
+          <button onClick={close} style={{ background: 'none', border: 'none', color: langColor, cursor: 'pointer',
+            fontSize: '20px', fontFamily: 'monospace',
+            width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             x
           </button>
         </div>
@@ -310,7 +363,8 @@ export function RepoProfilePanel() {
         <div
           onClick={close}
           style={{
-            position: 'fixed', inset: 0, right: '380px',
+            position: 'fixed', inset: 0,
+            ...(isMobile ? {} : { right: '380px' }),
             background: 'rgba(0,0,0,0.25)',
             zIndex: 1000,
           }}

@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HUD } from '@/components/ui/HUD';
 import { loadSlimCity, subscribeToNewUsers } from '@/lib/supabaseDb';
 import { startDiscoveryStream } from '@/lib/cityStream';
@@ -18,6 +18,7 @@ export default function Home() {
   const setLoading = useCityStore(s => s.setLoading);
   const setLoadingProgress = useCityStore(s => s.setLoadingProgress);
   const enteredCity = useRef(false);
+  const [cityReady, setCityReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +45,8 @@ export default function Home() {
       enteredCity.current = true;
       setLoadingProgress(100, 'City ready!');
       setLoading(false);
+      // Defer Canvas mount to let intro overlay transition first
+      setCityReady(true);
 
       // Phase 2: Subscribe to Supabase realtime for new users
       if (!cancelled) {
@@ -52,21 +55,18 @@ export default function Home() {
         });
       }
 
-      // Phase 3: Stream NEW GitHub users — restart periodically for continuous loading
+      // Phase 3: Stream NEW GitHub users — auto-close after 5 minutes total
       if (!cancelled) {
-        const runStream = () => {
-          stopStream = startDiscoveryStream(
-            (user) => { if (!cancelled) addUser(user); },
-            () => {},
-            () => {
-              // When stream finishes, restart after 3 minutes to keep discovering
-              if (!cancelled) {
-                setTimeout(() => { if (!cancelled) runStream(); }, 3 * 60 * 1000);
-              }
-            },
-          );
-        };
-        runStream();
+        const STREAM_MAX_MS = 5 * 60 * 1000; // 5 minutes
+        stopStream = startDiscoveryStream(
+          (user) => { if (!cancelled) addUser(user); },
+          () => {},
+          () => {}, // onDone — no restart, rely on Supabase Realtime after this
+        );
+        // Force-close stream after 5 minutes to prevent memory leak
+        setTimeout(() => {
+          if (stopStream) { stopStream(); stopStream = null; }
+        }, STREAM_MAX_MS);
       }
     }
 
@@ -81,7 +81,7 @@ export default function Home() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      <CityScene />
+      {cityReady && <CityScene />}
       <HUD />
     </div>
   );

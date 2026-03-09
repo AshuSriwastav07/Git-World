@@ -1,4 +1,5 @@
 // RepoCrown — Rotating crystal ornament at top of repo buildings
+// Uses shared clock from parent useFrame instead of individual useFrame per instance
 'use client';
 
 import { useRef } from 'react';
@@ -6,16 +7,26 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 
 interface RepoCrownProps {
-  color: string; // language color tint
-  y: number;     // height to place the crown
+  color: string;
+  y: number;
 }
+
+// Single shared rotation ref across all RepoCrown instances
+let _sharedRotation = 0;
+let _lastFrameId = -1;
 
 export function RepoCrown({ color, y }: RepoCrownProps) {
   const groupRef = useRef<THREE.Group>(null!);
 
-  useFrame((_, delta) => {
+  useFrame(({ clock }) => {
+    // Only compute rotation once per frame across all instances
+    const frameId = Math.floor(clock.elapsedTime * 1000);
+    if (frameId !== _lastFrameId) {
+      _sharedRotation = clock.elapsedTime * Math.PI;
+      _lastFrameId = frameId;
+    }
     if (groupRef.current) {
-      groupRef.current.rotation.y += delta * Math.PI; // 0.5 rotations/sec
+      groupRef.current.rotation.y = _sharedRotation;
     }
   });
 

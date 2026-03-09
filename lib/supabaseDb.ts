@@ -259,6 +259,15 @@ export async function getRecentEvents(limit = 50) {
   return (data ?? []).reverse();
 }
 
+// ── WRITE HELPERS ────────────────────────────────────────────────────────────
+
+/** Coerce any value to a safe non-negative integer (guards NaN, Infinity, null, undefined) */
+function safeInt(value: unknown, defaultValue: number = 0): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return defaultValue;
+  return Math.floor(n);
+}
+
 // ── WRITE OPERATIONS (server-side only) ─────────────────────────────────────
 
 /** In-flight upsert locks per login to avoid race conditions */
@@ -266,6 +275,20 @@ const upsertLocks = new Map<string, Promise<CityUser | null>>();
 
 /** Add or update a user in the city. Claims slot atomically for new users. */
 export async function upsertUser(userData: Omit<CityUser, 'citySlot' | 'cityRank' | 'firstAddedAt' | 'lastUpdatedAt'>): Promise<CityUser | null> {
+  // Guard: minimum required fields
+  if (!userData || typeof userData !== 'object') {
+    console.warn('[upsertUser] called with null or non-object, skipping');
+    return null;
+  }
+  if (!userData.login || typeof userData.login !== 'string' || userData.login.trim() === '') {
+    console.warn('[upsertUser] missing or invalid login, skipping');
+    return null;
+  }
+  if (userData.login.includes('/')) {
+    console.warn('[upsertUser] login contains slash (repo name?), skipping:', userData.login);
+    return null;
+  }
+
   const key = userData.login.toLowerCase();
 
   // If there's already an in-flight upsert for this login, wait for it
@@ -291,43 +314,80 @@ function sanitizeRepos(repos: unknown): TopRepo[] {
     .slice(0, 10)
     .map(r => ({
       name:        String(r.name ?? ''),
-      stars:       Number(r.stars) || 0,
-      forks:       Number(r.forks) || 0,
+      stars:       safeInt(r.stars),
+      forks:       safeInt(r.forks),
       language:    String(r.language ?? ''),
-      description: String(r.description ?? ''),
+      description: String(r.description ?? '').slice(0, 200),
       url:         String(r.url ?? ''),
     }));
+}
+
+/**
+ * Validate and serialize a value for a JSONB column.
+ * Always returns a valid, parsed-verified value safe for Supabase.
+ */
+function safeJsonbValue(value: unknown, fallback: unknown = []): unknown {
+  if (value === null || value === undefined) return fallback;
+  try {
+    // Round-trip through JSON to strip undefined, NaN, Infinity, class instances
+    const serialized = JSON.stringify(value);
+    return JSON.parse(serialized);
+  } catch {
+    return fallback;
+  }
 }
 
 async function doUpsert(userData: Omit<CityUser, 'citySlot' | 'cityRank' | 'firstAddedAt' | 'lastUpdatedAt'>): Promise<CityUser | null> {
   const sb = getSupabaseServer();
 
-  // Round all numeric values to avoid "invalid input for type integer" errors
+  // Sanitize all numeric values — guards NaN, Infinity, null, undefined
   const nums = {
-    public_repos:      Math.round(userData.publicRepos ?? 0),
-    followers:         Math.round(userData.followers ?? 0),
-    following:         Math.round(userData.following ?? 0),
-    total_stars:       Math.round(userData.totalStars ?? 0),
-    total_forks:       Math.round(userData.totalForks ?? 0),
-    estimated_commits: Math.round(userData.estimatedCommits ?? 0),
-    recent_activity:   Math.round(userData.recentActivity ?? 0),
-    total_score:       Math.round(userData.totalScore ?? 0),
+    public_repos:      safeInt(userData.publicRepos),
+    followers:         safeInt(userData.followers),
+    following:         safeInt(userData.following),
+    total_stars:       safeInt(userData.totalStars),
+    total_forks:       safeInt(userData.totalForks),
+    estimated_commits: safeInt(userData.estimatedCommits),
+    recent_activity:   safeInt(userData.recentActivity),
+    total_score:       safeInt(userData.totalScore),
   };
 
+  // Recalculate total_score to prevent drift from bad upstream values
+  const recalcScore = Math.floor(
+    nums.estimated_commits * 3 +
+    nums.total_stars * 2 +
+    nums.followers * 1 +
+    nums.public_repos * 0.5 +
+    nums.recent_activity * 10
+  );
+  nums.total_score = recalcScore;
+
+  // Sanitize JSONB field — round-trip validates serializability
+  const safeRepos = safeJsonbValue(sanitizeRepos(userData.topRepos), []);
+
   const updatePayload = {
-    name:              String(userData.name ?? ''),
+    name:              String(userData.name ?? '').slice(0, 200),
     avatar_url:        String(userData.avatarUrl ?? ''),
-    bio:               String(userData.bio ?? ''),
-    location:          String(userData.location ?? ''),
-    company:           String(userData.company ?? ''),
+    bio:               String(userData.bio ?? '').slice(0, 500),
+    location:          String(userData.location ?? '').slice(0, 200),
+    company:           String(userData.company ?? '').slice(0, 200),
     ...nums,
-    top_language:      String(userData.topLanguage ?? 'Unknown'),
-    top_repos:         sanitizeRepos(userData.topRepos),
+    top_language:      (typeof userData.topLanguage === 'string' && userData.topLanguage.trim())
+                         ? userData.topLanguage.trim()
+                         : 'Unknown',
+    top_repos:         safeRepos,
     last_updated_at:   new Date().toISOString(),
   };
 
-  // Ensure entire payload is valid JSON (strips undefined, NaN, Infinity, etc.)
-  const cleanPayload = JSON.parse(JSON.stringify(updatePayload)) as typeof updatePayload;
+  // Final safety net — round-trip entire payload through JSON to strip
+  // undefined, NaN, Infinity, Date objects, class instances, etc.
+  let cleanPayload: typeof updatePayload;
+  try {
+    cleanPayload = JSON.parse(JSON.stringify(updatePayload)) as typeof updatePayload;
+  } catch (e) {
+    console.error('[upsertUser] payload serialization failed for:', userData.login, e);
+    return null;
+  }
 
   // Check if user already exists
   const { data: existing } = await sb
@@ -370,20 +430,31 @@ async function doUpsert(userData: Omit<CityUser, 'citySlot' | 'cityRank' | 'firs
     added_by:          userData.addedBy ?? 'discovery',
   };
 
+  // Verify the insert payload round-trips cleanly before sending to Supabase
+  let cleanInsertPayload: typeof insertPayload;
+  try {
+    cleanInsertPayload = JSON.parse(JSON.stringify(insertPayload)) as typeof insertPayload;
+  } catch (e) {
+    console.error('[upsertUser] insert payload serialization failed for:', userData.login, e);
+    return null;
+  }
+
   let data: Record<string, unknown> | null = null;
   let error: { message: string } | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await sb
       .from('city_users')
-      .insert(insertPayload)
+      .insert(cleanInsertPayload)
       .select()
       .single();
     data = res.data;
     error = res.error;
     if (!error) break;
     if (error.message.includes('Empty or invalid json') && attempt === 0) {
-      await new Promise(r => setTimeout(r, 200));
+      // Log the offending payload for debugging
+      console.warn('[upsertUser] retrying insert for:', userData.login, '— payload keys:', Object.keys(cleanInsertPayload));
+      await new Promise(r => setTimeout(r, 300));
       continue;
     }
     break;
@@ -401,7 +472,7 @@ async function doUpsert(userData: Omit<CityUser, 'citySlot' | 'cityRank' | 'firs
       if (fbErr) return null;
       return rowToUser(fallback);
     }
-    console.error('[upsertUser] insert error:', error.message);
+    console.error('[upsertUser] insert error:', error.message, 'login:', userData.login);
     return null;
   }
 

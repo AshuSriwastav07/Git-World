@@ -30,16 +30,20 @@ interface ContributorRaw {
   contributions: number;
 }
 
-const SPAM_NAMES = /^(test|demo|example|tutorial)$/i;
+const SPAM_NAMES = /^(test|demo|example|tutorial|awesome-list|awesome|learn|course|interview|cheatsheet|100-days|roadmap|free|handbook|guide)$/i;
+const SPAM_OWNERS = /^(dependabot|renovate|github-actions|greenkeeper)$/i;
+
+// Fixed height-by-rank table: rank 1 = 72, rank 20 = 16
+const RANK_HEIGHTS = [72, 66, 61, 56, 52, 48, 44, 40, 37, 34, 31, 29, 27, 25, 24, 22, 20, 18, 17, 16];
 
 export async function POST() {
   const sb = getSupabaseServer();
   const results: string[] = [];
 
   try {
-    // ── PHASE 1: Search GitHub for trending repos ──
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-    const searchUrl = `https://api.github.com/search/repositories?q=pushed:>${weekAgo}+stars:>50+fork:false&sort=stars&order=desc&per_page=30`;
+    // ── PHASE 1: Search GitHub for repos created in the last 30 days ──
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    const searchUrl = `https://api.github.com/search/repositories?q=created:>${thirtyDaysAgo}+stars:>50+fork:false+archived:false&sort=stars&order=desc&per_page=60`;
 
     const searchRes = await githubFetch(searchUrl);
     if (!searchRes.ok) {
@@ -55,16 +59,18 @@ export async function POST() {
       if (r.fork || r.archived) return false;
       if (r.stargazers_count < 50) return false;
       if (SPAM_NAMES.test(r.name)) return false;
+      if (SPAM_OWNERS.test(r.owner.login)) return false;
       return true;
-    }).slice(0, 20);
+    });
 
-    results.push(`Phase 1: Found ${filtered.length} trending repos`);
+    results.push(`Phase 1: Found ${filtered.length} candidate repos (created <30 days)`);
 
-    // ── PHASE 2: Fetch details + contributors for each repo ──
+    // ── PHASE 2: Fetch details + contributors + weekly commit activity ──
     const repoDetails: {
       repo: SearchRepo;
       topics: string[];
       contributors: { login: string; avatarUrl: string; contributions: number; city_rank: number | null }[];
+      weeklyCommits: number;
     }[] = [];
 
     for (const repo of filtered) {
@@ -79,6 +85,20 @@ export async function POST() {
           homepage = detail.homepage ?? homepage;
         }
       } catch { /* use defaults */ }
+
+      // Fetch weekly commit activity via punch_card (last 7 days of commits)
+      let weeklyCommits = 0;
+      try {
+        const statsRes = await githubFetch(
+          `https://api.github.com/repos/${repo.full_name}/stats/participation`
+        );
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          // participation.all is an array of 52 weekly commit counts; last entry = most recent week
+          const allWeeks: number[] = statsData.all ?? [];
+          weeklyCommits = allWeeks.length > 0 ? allWeeks[allWeeks.length - 1] : 0;
+        }
+      } catch { /* default 0 */ }
 
       // Fetch top 5 contributors
       const contributors: { login: string; avatarUrl: string; contributions: number; city_rank: number | null }[] = [];
@@ -106,13 +126,13 @@ export async function POST() {
         }
       } catch { /* skip contributors */ }
 
-      repoDetails.push({ repo, topics, contributors });
+      repoDetails.push({ repo, topics, contributors, weeklyCommits });
     }
 
     results.push(`Phase 2: Fetched details for ${repoDetails.length} repos`);
 
-    // ── PHASE 3: Calculate trending scores + weekly stars ──
-    // Get existing entries for delta calculation
+    // ── PHASE 3: Calculate trending scores ──
+    // Score = (total_stars × 2) + (weekly_commits × 50) + (forks × 1)
     const { data: existingRepos } = await sb
       .from('trending_repos')
       .select('repo_full_name, total_stars, daily_stars');
@@ -127,39 +147,40 @@ export async function POST() {
 
     const today = new Date().toISOString().split('T')[0];
 
-    const scored = repoDetails.map(({ repo, topics, contributors }) => {
+    const scored = repoDetails.map(({ repo, topics, contributors, weeklyCommits }) => {
       const existing = existingMap.get(repo.full_name);
       const weeklyStars = existing
         ? Math.max(0, repo.stargazers_count - existing.total_stars)
-        : Math.round(repo.stargazers_count * 0.05); // estimate 5% for first-time
+        : Math.round(repo.stargazers_count * 0.05);
 
-      // Update daily_stars array (keep last 7 days)
       let dailyStars = existing?.daily_stars ?? [];
       const todayEntry = { date: today, count: weeklyStars > 0 ? Math.round(weeklyStars / 7) : 0 };
       dailyStars = [...dailyStars.filter(d => d.date !== today), todayEntry].slice(-7);
 
-      const trendingScore = (weeklyStars * 3) + (repo.forks_count * 1) + (repo.open_issues_count * 0.2);
+      const trendingScore = (repo.stargazers_count * 2) + (weeklyCommits * 50) + (repo.forks_count * 1);
 
       return {
         repo,
         topics,
         contributors,
         weeklyStars,
+        weeklyCommits,
         dailyStars,
         trendingScore,
       };
     });
 
-    // Sort by trending score descending
+    // Sort by trending score descending, take top 20
     scored.sort((a, b) => b.trendingScore - a.trendingScore);
+    const top20 = scored.slice(0, 20);
 
     results.push(`Phase 3: Scored and ranked repos`);
 
-    // ── PHASE 4: Calculate building dimensions ──
-    const upsertData = scored.map((item, idx) => {
+    // ── PHASE 4: Calculate building dimensions using fixed rank table ──
+    const upsertData = top20.map((item, idx) => {
       const rank = idx + 1;
-      const height = Math.min(65, Math.max(8, 8 + (item.weeklyStars / 100)));
-      const width = Math.min(6, Math.max(2, 2 + (item.repo.stargazers_count / 25000)));
+      const height = RANK_HEIGHTS[idx] ?? 16;
+      const width = 5; // consistent width for all trending buildings
 
       return {
         repo_full_name: item.repo.full_name,
@@ -180,8 +201,8 @@ export async function POST() {
         top_contributors: item.contributors,
         trending_rank: rank,
         district_slot: rank - 1,
-        building_height: Math.round(height * 10) / 10,
-        building_width: Math.round(width * 10) / 10,
+        building_height: height,
+        building_width: width,
         last_refreshed: new Date().toISOString(),
         is_active: true,
       };
@@ -190,7 +211,6 @@ export async function POST() {
     results.push(`Phase 4: Calculated dimensions for ${upsertData.length} buildings`);
 
     // ── PHASE 5: Upsert into trending_repos ──
-    // First deactivate ALL active repos to avoid unique index conflict on trending_rank
     await sb
       .from('trending_repos')
       .update({ is_active: false })

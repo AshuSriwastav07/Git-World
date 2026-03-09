@@ -133,13 +133,15 @@ async function fetchProfile(login: string): Promise<ProfileData | null> {
         }
       }
     }
-    estimatedCommits = Math.round(estimatedCommits * 3.5);
-    recentActivity = Math.min(recentActivity, 100);
+    estimatedCommits = Math.round(estimatedCommits * 3.5) || 0;
+    recentActivity = Math.min(recentActivity, 100) || 0;
+    totalStars = totalStars || 0;
+    totalForks = totalForks || 0;
 
     const totalScore = Math.round(
       estimatedCommits * 3 + totalStars * 2 + (user.followers || 0) * 1 +
       (user.public_repos || 0) * 0.5 + recentActivity * 10
-    );
+    ) || 0;
 
     return {
       login: user.login,
@@ -231,7 +233,9 @@ export async function GET() {
               } });
               completed++;
             }
-          } catch { /* skip */ }
+          } catch (err) {
+            console.error('[stream] upsert failed for:', profile.login, err instanceof Error ? err.message : err);
+          }
         }
         if (completed % 50 === 0) {
           send({ type: 'progress', completed, total: allLogins.length });

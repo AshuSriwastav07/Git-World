@@ -187,7 +187,6 @@ export function CityGrid() {
   const bodyRef = useRef<THREE.InstancedMesh>(null);
   const glowRef = useRef<THREE.InstancedMesh>(null);
 
-  const users        = useCityStore(s => s.users);
   const sortedLogins = useCityStore(s => s.sortedLogins);
   const selectedUser = useCityStore(s => s.selectedUser);
   const selectUser   = useCityStore(s => s.selectUser);
@@ -204,30 +203,70 @@ export function CityGrid() {
   /* Shared geometry — a unit cube scaled per instance */
   const boxGeo = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
 
-  /* Window texture — regenerated on night toggle */
-  const windowTex = useMemo(() => typeof window !== 'undefined' ? createWindowTexture(isNight) : null, [isNight]);
+  /* Pre-build BOTH day AND night materials at startup — swap on toggle, never recreate */
+  const { dayBodyMat, nightBodyMat, dayGlowMat, nightGlowMat } = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return {
+        dayBodyMat: new THREE.MeshLambertMaterial(),
+        nightBodyMat: new THREE.MeshLambertMaterial(),
+        dayGlowMat: new THREE.MeshBasicMaterial(),
+        nightGlowMat: new THREE.MeshBasicMaterial(),
+      };
+    }
+    const dayTex = createWindowTexture(false);
+    const nightTex = createWindowTexture(true);
 
-  /* Materials */
-  const bodyMat = useMemo(() => new THREE.MeshLambertMaterial({
-    map: windowTex ?? undefined,
-    emissive: isNight ? new THREE.Color('#ffcc66') : new THREE.Color('#000000'),
-    emissiveIntensity: isNight ? 0.18 : 0,
-    emissiveMap: isNight ? windowTex ?? undefined : undefined,
-  }), [windowTex, isNight]);
+    const dayBody = new THREE.MeshLambertMaterial({
+      map: dayTex,
+      emissive: new THREE.Color('#000000'),
+      emissiveIntensity: 0,
+    });
+    const nightBody = new THREE.MeshLambertMaterial({
+      map: nightTex,
+      emissive: new THREE.Color('#ffcc66'),
+      emissiveIntensity: 0.18,
+      emissiveMap: nightTex,
+    });
+    const dayGlow = new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0.05, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.BackSide,
+    });
+    const nightGlow = new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0.3, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.BackSide,
+    });
 
-  const glowMat = useMemo(() => new THREE.MeshBasicMaterial({
-    transparent: true,
-    opacity: isNight ? 0.3 : 0.05,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    side: THREE.BackSide,
-  }), [isNight]);
+    return { dayBodyMat: dayBody, nightBodyMat: nightBody, dayGlowMat: dayGlow, nightGlowMat: nightGlow };
+  }, []); // empty deps — created once, never recreated
+
+  /* Swap materials instantly on day/night toggle — 2 ref swaps, not 8000 rebuilds */
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.material = isNight ? nightBodyMat : dayBodyMat;
+    if (glowRef.current) glowRef.current.material = isNight ? nightGlowMat : dayGlowMat;
+  }, [isNight, dayBodyMat, nightBodyMat, dayGlowMat, nightGlowMat]);
+
+  /* Dispose all GPU resources on unmount */
+  useEffect(() => {
+    return () => {
+      dayBodyMat.dispose(); nightBodyMat.dispose();
+      dayGlowMat.dispose(); nightGlowMat.dispose();
+      if (dayBodyMat.map) dayBodyMat.map.dispose();
+      if (nightBodyMat.map) nightBodyMat.map.dispose();
+      boxGeo.dispose();
+    };
+  }, [dayBodyMat, nightBodyMat, dayGlowMat, nightGlowMat, boxGeo]);
 
   /* ── Build / rebuild all instances ── */
   useEffect(() => {
+    // Skip rebuilding during loading — buildings aren't visible yet
+    if (introStage === 'loading') return;
+
     const body = bodyRef.current;
     const glow = glowRef.current;
     if (!body || !glow) return;
+
+    // Access users via getState to avoid re-render subscription during loading
+    const users = useCityStore.getState().users;
 
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
@@ -326,10 +365,10 @@ export function CityGrid() {
     loginsByInstance.current = logins;
     instanceCount.current = count;
     buildingData.current = bData;
-  }, [users, sortedLogins, isNight, introStage, selectedUser]);
+  }, [sortedLogins, introStage, selectedUser]); // isNight removed — material swap handles day/night
 
   /* ── Rise animation during cinematic intro ── */
-  const RISE_DURATION = 10000; // 10 seconds for all buildings to rise
+  const RISE_DURATION = 7000; // 7 seconds for all buildings to rise
   const MAX_DIST_DELAY = 0.6;  // fraction of rise time used for distance-based delay
 
   useFrame(() => {
@@ -384,6 +423,25 @@ export function CityGrid() {
     }
   });
 
+  /* ── Click-vs-drag guard ── */
+  const pointerDown = useRef<{ x: number; y: number; time: number } | null>(null);
+  const DRAG_THRESHOLD = 5; // px — movement beyond this means drag, not click
+  const CLICK_TIMEOUT = 200; // ms — ignore clicks held longer than this
+
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    pointerDown.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+  }, []);
+
+  const isRealClick = useCallback((e: ThreeEvent<MouseEvent>): boolean => {
+    if (!pointerDown.current) return false;
+    const dx = e.clientX - pointerDown.current.x;
+    const dy = e.clientY - pointerDown.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const elapsed = Date.now() - pointerDown.current.time;
+    pointerDown.current = null;
+    return dist < DRAG_THRESHOLD && elapsed < CLICK_TIMEOUT;
+  }, []);
+
   /* ── Click handler ── */
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -394,6 +452,7 @@ export function CityGrid() {
       useCityStore.getState().setUserInteracted();
       return;
     }
+    if (!isRealClick(e)) return; // drag, not click
     if (e.instanceId !== undefined) {
       const login = loginsByInstance.current[e.instanceId];
       if (login) {
@@ -401,7 +460,7 @@ export function CityGrid() {
         if (user) selectUser(user);
       }
     }
-  }, [selectUser, introStage]);
+  }, [selectUser, introStage, isRealClick]);
 
   /* ── Ground ── */
   const groundSize = getGroundSize(sortedLogins.length);
@@ -438,15 +497,14 @@ export function CityGrid() {
       {/* Building bodies — InstancedMesh */}
       <instancedMesh
         ref={bodyRef}
-        args={[boxGeo, bodyMat, MAX_BUILDINGS]}
+        args={[boxGeo, dayBodyMat, MAX_BUILDINGS]}
+        onPointerDown={handlePointerDown}
         onClick={handleClick}
-        onPointerOver={(e: ThreeEvent<PointerEvent>) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { document.body.style.cursor = 'default'; }}
         frustumCulled={false}
       />
 
       {/* Glow shells — InstancedMesh */}
-      <instancedMesh ref={glowRef} args={[boxGeo, glowMat, MAX_BUILDINGS]} frustumCulled={false} renderOrder={0} />
+      <instancedMesh ref={glowRef} args={[boxGeo, dayGlowMat, MAX_BUILDINGS]} frustumCulled={false} renderOrder={0} />
 
       {/* Selection ring */}
       <SelectionRing />

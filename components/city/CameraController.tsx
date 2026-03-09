@@ -97,7 +97,7 @@ export default function CameraController() {
     };
   }, [isRankChartOpen, setRankChartOpen, toggleAirplaneMode, toggleNight]);
 
-  // ── Fly to selected building ──
+  // ── Fly to selected building (offset camera right so building is on left half, panel on right) ──
   useEffect(() => {
     if (!selectedUser) return;
     const rank = selectedUser.cityRank ?? Math.max(sortedLogins.indexOf(selectedUser.login.toLowerCase()) + 1, 1);
@@ -106,9 +106,11 @@ export default function CameraController() {
     const dims = getBuildingDimensions(rank, slot, selectedUser);
     const H = dims.height, BX = pos.x, BZ = pos.z;
     const dist = Math.max(H * 1.6, 25);
+    // Offset camera to the right so the building sits in the left half of the viewport
+    const panelOffset = dist * 0.35;
     const a = flyAnim.current;
     a.startPos.copy(camera.position);
-    a.endPos.set(BX + dist * 0.4, H * 0.7 + 12, BZ + dist);
+    a.endPos.set(BX + dist * 0.4 + panelOffset, H * 0.7 + 12, BZ + dist);
     a.startTarget.copy(controlsRef.current?.target ?? new THREE.Vector3());
     a.endTarget.set(BX, H * 0.4, BZ);
     a.progress = 0;
@@ -188,7 +190,13 @@ export default function CameraController() {
     }
   });
 
-  if (isAirplaneMode) return null;
+  if (isAirplaneMode) return (
+    <OrbitControls
+      ref={controlsRef}
+      enabled={false}
+      makeDefault
+    />
+  );
 
   // Auto-rotate: orbit slowly until user interacts
   const shouldAutoRotate = !userInteracted;

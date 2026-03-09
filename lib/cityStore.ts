@@ -54,7 +54,7 @@ function computeSortedLogins(users: Map<string, SlimUser>): string[] {
 /* ── Batched addUser buffer ────────────────────────────────────────────── */
 let pendingBuffer: SlimUser[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
-const BATCH_MS = 400;
+const BATCH_MS = 2000;
 
 function flushPending() {
   flushTimer = null;
@@ -91,6 +91,18 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
       for (const u of users) {
         newUsers.set(u.login.toLowerCase(), u);
       }
+      // Cap at 10K users to prevent unbounded memory growth
+      if (newUsers.size > 10000) {
+        const entries = Array.from(newUsers.entries());
+        const sorted = entries.sort((a, b) => b[1].totalScore - a[1].totalScore);
+        const capped = new Map(sorted.slice(0, 10000));
+        if (state.isLoading) return { users: capped };
+        return { users: capped, sortedLogins: computeSortedLogins(capped) };
+      }
+      // During initial loading, skip expensive sort — computed once in setLoading(false)
+      if (state.isLoading) {
+        return { users: newUsers };
+      }
       const sortedLogins = computeSortedLogins(newUsers);
       return { users: newUsers, sortedLogins };
     });
@@ -122,7 +134,16 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
 
   setSelectedUser: (user: SlimUser | null) => set({ selectedUser: user }),
 
-  setLoading: (loading: boolean) => set({ isLoading: loading }),
+  setLoading: (loading: boolean) => {
+    if (!loading) {
+      // Loading finished — compute sorted logins once for all accumulated users
+      const users = get().users;
+      const sortedLogins = computeSortedLogins(users);
+      set({ isLoading: false, sortedLogins });
+    } else {
+      set({ isLoading: loading });
+    }
+  },
 
   setLoadingProgress: (progress: number, message?: string) =>
     set({ loadingProgress: progress, ...(message ? { loadingMessage: message } : {}) }),
