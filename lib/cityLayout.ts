@@ -144,9 +144,10 @@ export function getTechParkWorldCenter(): { x: number; z: number } {
 // Park occupies a 50×50 region; check if a world position falls inside
 const PARK_HALF = 25;
 
-// Silicon Valley Park — compact round park embedded in the city
+// Silicon Valley Park — rectangular park embedded in the city (200×200)
 export const SV_CENTER = { x: 75, z: 75 };
-export const SV_RADIUS = 80;
+export const SV_RADIUS = 80; // kept for backward compat
+export const SV_HALF = 100;   // half-extent of 200×200 rectangular park
 
 // Trending Repositories District — southwest of city
 export const TRENDING_CENTER = { x: -120, z: 120 };
@@ -157,10 +158,10 @@ export function isInsidePark(wx: number, wz: number): boolean {
   const inTechPark =
     wx >= pc.x - PARK_HALF && wx <= pc.x + PARK_HALF &&
     wz >= pc.z - PARK_HALF && wz <= pc.z + PARK_HALF;
-  // Round check for SV park
-  const dx = wx - SV_CENTER.x;
-  const dz = wz - SV_CENTER.z;
-  const inSVPark = (dx * dx + dz * dz) <= (SV_RADIUS + 2) * (SV_RADIUS + 2);
+  // Rectangle check for SV park (200×200)
+  const inSVPark =
+    wx >= SV_CENTER.x - SV_HALF - 2 && wx <= SV_CENTER.x + SV_HALF + 2 &&
+    wz >= SV_CENTER.z - SV_HALF - 2 && wz <= SV_CENTER.z + SV_HALF + 2;
   // Rectangle check for Trending District
   const inTrending =
     wx >= TRENDING_CENTER.x - TRENDING_HALF && wx <= TRENDING_CENTER.x + TRENDING_HALF &&

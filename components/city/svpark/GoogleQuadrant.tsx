@@ -27,20 +27,46 @@ const GOOGLE_COLORS = [
 ];
 
 const WALK_PATHS: [number, number, number][][] = [
-  [[-10, 0, 8], [10, 0, 8], [-10, 0, 8]],
-  [[12, 0, 5], [12, 0, 20], [12, 0, 5]],
-  [[-12, 0, 15], [8, 0, 18], [-12, 0, 15]],
+  [[-8, 0, 9], [8, 0, 9], [-8, 0, 9]],
+  [[0, 0, 8], [0, 0, 14], [0, 0, 8]],
+  [[-6, 0, 12], [6, 0, 10], [-6, 0, 12]],
+  [[4, 0, 8], [-4, 0, 13], [4, 0, 8]],
 ];
+
+function companyBehavior(pos: number): BehaviorType {
+  if (pos <= 9) return 1;   // walking_laptop
+  if (pos <= 16) return 6;  // sitting_bench
+  if (pos <= 20) return 2;  // eating
+  if (pos <= 23) return 4;  // pacing
+  if (pos <= 26) return 5;  // standing_laptop
+  return 3;                 // chatting
+}
 
 function generateCharacterSlots(count: number) {
   const slots: { pos: [number, number, number]; rot: number; behavior: BehaviorType; walkPath?: [number, number, number][] }[] = [];
-  for (let i = 0; i < count; i++) {
-    const behavior = (i % 7) as BehaviorType;
-    const row = Math.floor(i / 6);
-    const col = i % 6;
-    const pos: [number, number, number] = [-8 + col * 3, 0, 12 + row * 5];
-    const walkPath = (behavior === 1 || behavior === 4) ? WALK_PATHS[i % WALK_PATHS.length] : undefined;
-    slots.push({ pos: walkPath ? walkPath[0] : pos, rot: 0, behavior, walkPath });
+  const max = Math.min(count, 30);
+  // 3 rows × 10 in front of the Googleplex, all within campus
+  const ROWS = [
+    { z: 8, xRange: 11 },
+    { z: 11, xRange: 12 },
+    { z: 14, xRange: 11 },
+  ];
+  let placed = 0;
+  for (const row of ROWS) {
+    if (placed >= max) break;
+    const n = Math.min(10, max - placed);
+    for (let i = 0; i < n; i++) {
+      const behavior = companyBehavior(placed);
+      const x = n === 1 ? 0 : -row.xRange + (i / (n - 1)) * row.xRange * 2;
+      const pos: [number, number, number] = [x, 0, row.z];
+      let walkPath: [number, number, number][] | undefined;
+      if (behavior === 1 || behavior === 4) {
+        const wp = WALK_PATHS[placed % WALK_PATHS.length];
+        walkPath = wp.map(p => [p[0] * 0.8, p[1], p[2]] as [number, number, number]);
+      }
+      slots.push({ pos: walkPath ? walkPath[0] : pos, rot: 0, behavior, walkPath });
+      placed++;
+    }
   }
   return slots;
 }
@@ -130,9 +156,9 @@ export function GoogleQuadrant({ contributors }: { contributors: Contributor[] }
 
       {/* Tall narrow trees */}
       {[
-        [-20, 0, -8], [-20, 0, 8], [20, 0, -8], [20, 0, 8],
-        [-12, 0, 12], [12, 0, 12],
-        [-8, 0, -10], [8, 0, -10],
+        [-16, 0, -8], [-16, 0, 8], [16, 0, -8], [16, 0, 8],
+        [-10, 0, 10], [10, 0, 10],
+        [-8, 0, -8], [8, 0, -8],
       ].map((pos, i) => (
         <group key={`tree-${i}`} position={pos as [number, number, number]}>
           <mesh position={[0, 1.5, 0]}>
@@ -206,7 +232,7 @@ export function GoogleQuadrant({ contributors }: { contributors: Contributor[] }
             behavior={s.behavior}
             walkPath={s.walkPath}
             walkSpeed={0.5}
-            containmentRadius={28}
+            containmentRadius={5}
             citySlot={c.citySlot}
             cityRank={c.cityRank}
             totalScore={c.totalScore}

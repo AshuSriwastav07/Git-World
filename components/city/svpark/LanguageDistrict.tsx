@@ -51,28 +51,54 @@ function createLanguageBannerTexture(language: string, color: string): THREE.Can
   return tex;
 }
 
+/* ── walk path templates ── */
+const LANG_WALK_PATHS: [number, number, number][][] = [
+  [[-3, 0, 2], [3, 0, 2], [-3, 0, 2]],
+  [[0, 0, -3], [0, 0, 4], [0, 0, -3]],
+  [[-2, 0, 3], [2, 0, -2], [-2, 0, 3]],
+  [[2, 0, -2], [-2, 0, 3], [2, 0, -2]],
+];
+
 /* ── character slot generator ── */
 function generateSlots(count: number) {
   const slots: { pos: [number, number, number]; rot: number; behavior: BehaviorType; walkPath?: [number, number, number][] }[] = [];
-  const max = Math.min(count, 8);
-  for (let i = 0; i < max; i++) {
-    const behavior = (i % 7) as BehaviorType;
-    // Semicircle layout inside district, radius 6-9
-    const angle = (-Math.PI * 0.4) + (i / Math.max(max - 1, 1)) * Math.PI * 0.8;
-    const r = 6 + (i % 3) * 1.5;
-    const pos: [number, number, number] = [Math.cos(angle) * r, 0, Math.sin(angle) * r];
+  const max = Math.min(count, 20);
+  // 2 concentric rings within the 10-radius grass patch (10+10 = 20 max)
+  const RINGS = [
+    { radius: 3.5, count: 10 },
+    { radius: 7, count: 10 },
+  ];
+  function langBehavior(pos: number): BehaviorType {
+    if (pos <= 6) return 1;   // walking_laptop
+    if (pos <= 12) return 6;  // sitting_bench
+    if (pos <= 15) return 2;  // eating
+    if (pos <= 17) return 4;  // pacing
+    return 5;                 // standing_laptop
+  }
 
-    let walkPath: [number, number, number][] | undefined;
-    if (behavior === 1 || behavior === 4) {
-      walkPath = [
-        pos,
-        [pos[0] + 4, 0, pos[2] + 2],
-        [pos[0] - 2, 0, pos[2] - 3],
-        pos,
+  let placed = 0;
+  for (const ring of RINGS) {
+    if (placed >= max) break;
+    const n = Math.min(ring.count, max - placed);
+    const angleOffset = ring.radius === 5.5 ? Math.PI / n : 0;
+    for (let j = 0; j < n; j++) {
+      const behavior = langBehavior(placed);
+      const angle = (j / n) * Math.PI * 2 + angleOffset;
+      const pos: [number, number, number] = [
+        Math.cos(angle) * ring.radius,
+        0,
+        Math.sin(angle) * ring.radius,
       ];
-    }
 
-    slots.push({ pos: walkPath ? walkPath[0] : pos, rot: angle + Math.PI, behavior, walkPath });
+      let walkPath: [number, number, number][] | undefined;
+      if (behavior === 1 || behavior === 4) {
+        const wp = LANG_WALK_PATHS[placed % LANG_WALK_PATHS.length];
+        walkPath = wp.map(p => [p[0] * 0.7, p[1], p[2] * 0.7] as [number, number, number]);
+      }
+
+      slots.push({ pos: walkPath ? walkPath[0] : pos, rot: angle + Math.PI, behavior, walkPath });
+      placed++;
+    }
   }
   return slots;
 }
@@ -157,7 +183,7 @@ export function LanguageDistrict({ language, color, position, developers }: Lang
       ))}
 
       {/* ── Developer characters ── */}
-      {developers.slice(0, 8).map((dev, i) => {
+      {developers.slice(0, 20).map((dev, i) => {
         const slot = slots[i];
         if (!slot) return null;
         return (
@@ -171,7 +197,7 @@ export function LanguageDistrict({ language, color, position, developers }: Lang
             behavior={slot.behavior}
             walkPath={slot.walkPath}
             walkSpeed={0.4}
-            containmentRadius={12}
+            containmentRadius={5}
             citySlot={dev.citySlot}
             cityRank={dev.cityRank}
             totalScore={dev.totalScore}

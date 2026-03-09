@@ -1,14 +1,17 @@
-// SiliconValleyPark — Round park embedded in city at SV_CENTER
-// Four quadrants: Apple (north/+Z), Google (east/+X), NVIDIA (south/-Z), Meta (west/-X)
+// SiliconValleyPark — Rectangular 200×200 park
+// North: 4 company campuses in a single row
+// South: 8 language districts in 2 rows × 4
+// Burj Khalifa between language rows
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { useCityStore } from '@/lib/cityStore';
-import { SV_CENTER, SV_RADIUS } from '@/lib/cityLayout';
+import { SV_CENTER, SV_HALF } from '@/lib/cityLayout';
 import { BurjKhalifaTower } from './svpark/BurjKhalifaTower';
 import { FlyingBanners } from './svpark/FlyingBanners';
 import { LanguageDistrict, type LanguageDev } from './svpark/LanguageDistrict';
+import { LanguageMonument } from './svpark/LanguageMonument';
 import { AppleQuadrant } from './svpark/AppleQuadrant';
 import { GoogleQuadrant } from './svpark/GoogleQuadrant';
 import { NvidiaQuadrant } from './svpark/NvidiaQuadrant';
@@ -36,7 +39,6 @@ function useFetchAllSVData() {
 
   useEffect(() => {
     let cancelled = false;
-    // Single call — no company param fetches all companies + language devs
     fetch('/api/silicon-valley/contributors')
       .then(r => r.json())
       .then(data => {
@@ -55,19 +57,19 @@ function useFetchAllSVData() {
   return { companies, languageDevs };
 }
 
-/* ── Language District definitions ── */
-const LANGUAGE_DISTRICTS: { language: string; color: string; angle: number }[] = [
-  { language: 'Python',     color: '#3776ab', angle: Math.PI * 0.25 },   // NE
-  { language: 'JavaScript', color: '#f7df1e', angle: Math.PI * 0.75 },   // NW
-  { language: 'TypeScript', color: '#3178c6', angle: -Math.PI * 0.25 },  // SE
-  { language: 'Java',       color: '#ed8b00', angle: -Math.PI * 0.75 },  // SW
-  { language: 'Rust',       color: '#dea584', angle: Math.PI * 0.125 },  // ENE
-  { language: 'Go',         color: '#00add8', angle: Math.PI * 0.875 },  // WNW
-  { language: 'C++',        color: '#00599c', angle: -Math.PI * 0.125 }, // ESE
-  { language: 'Kotlin',     color: '#7f52ff', angle: -Math.PI * 0.875 }, // WSW
+/* ── Language District definitions (south half 2×4 grid) ── */
+const LANGUAGE_DISTRICTS: { language: string; color: string; gridX: number; gridZ: number }[] = [
+  { language: 'Python',     color: '#3776ab', gridX: 0, gridZ: 0 },
+  { language: 'JavaScript', color: '#f7df1e', gridX: 1, gridZ: 0 },
+  { language: 'TypeScript', color: '#3178c6', gridX: 2, gridZ: 0 },
+  { language: 'Java',       color: '#ed8b00', gridX: 3, gridZ: 0 },
+  { language: 'Rust',       color: '#dea584', gridX: 0, gridZ: 1 },
+  { language: 'Go',         color: '#00add8', gridX: 1, gridZ: 1 },
+  { language: 'C++',        color: '#00599c', gridX: 2, gridZ: 1 },
+  { language: 'Kotlin',     color: '#7f52ff', gridX: 3, gridZ: 1 },
 ];
 
-// Canvas-texture banner factory — MeshBasicMaterial so it's visible day & night
+// Canvas-texture banner factory
 function createBannerTexture(text: string, bgColor: string, textColor: string): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
@@ -77,7 +79,6 @@ function createBannerTexture(text: string, bgColor: string, textColor: string): 
   ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, 512, 128);
 
-  // Border
   ctx.strokeStyle = textColor;
   ctx.lineWidth = 4;
   ctx.strokeRect(2, 2, 508, 124);
@@ -94,8 +95,8 @@ function createBannerTexture(text: string, bgColor: string, textColor: string): 
   return tex;
 }
 
-// Banner component — always readable day & night
-function CompanyBanner({ text, bgColor, textColor, position, rotation }: {
+// Banner component
+function ParkBanner({ text, bgColor, textColor, position, rotation }: {
   text: string;
   bgColor: string;
   textColor: string;
@@ -109,7 +110,6 @@ function CompanyBanner({ text, bgColor, textColor, position, rotation }: {
 
   return (
     <group position={position} rotation={rotation}>
-      {/* Banner poles */}
       <mesh position={[-2.5, -1.5, 0]}>
         <boxGeometry args={[0.15, 3, 0.15]} />
         <meshLambertMaterial color="#888" />
@@ -118,7 +118,6 @@ function CompanyBanner({ text, bgColor, textColor, position, rotation }: {
         <boxGeometry args={[0.15, 3, 0.15]} />
         <meshLambertMaterial color="#888" />
       </mesh>
-      {/* Banner face — MeshBasicMaterial = always visible */}
       <mesh>
         <planeGeometry args={[5, 1.25]} />
         <meshBasicMaterial map={tex} side={THREE.DoubleSide} />
@@ -127,36 +126,59 @@ function CompanyBanner({ text, bgColor, textColor, position, rotation }: {
   );
 }
 
-// Fence post ring — round perimeter with hedge connections
-function RoundFence({ radius, gaps }: { radius: number; gaps: number[] }) {
+// Rectangular perimeter fence with hedge
+function RectFence({ halfW, halfH, gapPositions }: {
+  halfW: number;
+  halfH: number;
+  gapPositions: { side: 'n' | 's' | 'e' | 'w'; offset: number }[];
+}) {
   const posts = useMemo(() => {
-    const result: { pos: [number, number, number]; angle: number }[] = [];
-    const COUNT = 72;
-    for (let i = 0; i < COUNT; i++) {
-      const angle = (i / COUNT) * Math.PI * 2;
-      // Skip posts near gap angles (entrances)
-      const inGap = gaps.some(g => Math.abs(((angle - g + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.14);
-      if (inGap) continue;
-      result.push({
-        pos: [Math.cos(angle) * radius, 0, Math.sin(angle) * radius],
-        angle,
-      });
+    const result: { pos: [number, number, number]; rot: number }[] = [];
+    const SPACING = 5;
+
+    // Build all four sides
+    const sides: { start: [number, number]; end: [number, number]; rot: number; side: 'n' | 's' | 'e' | 'w' }[] = [
+      { start: [-halfW, -halfH], end: [halfW, -halfH], rot: 0, side: 's' },
+      { start: [halfW, -halfH], end: [halfW, halfH], rot: Math.PI / 2, side: 'e' },
+      { start: [halfW, halfH], end: [-halfW, halfH], rot: Math.PI, side: 'n' },
+      { start: [-halfW, halfH], end: [-halfW, -halfH], rot: -Math.PI / 2, side: 'w' },
+    ];
+
+    for (const s of sides) {
+      const dx = s.end[0] - s.start[0];
+      const dz = s.end[1] - s.start[1];
+      const len = Math.sqrt(dx * dx + dz * dz);
+      const count = Math.floor(len / SPACING);
+
+      for (let i = 0; i <= count; i++) {
+        const t = i / count;
+        const x = s.start[0] + dx * t;
+        const z = s.start[1] + dz * t;
+
+        // Check if near a gap
+        const isGap = gapPositions.some(g => {
+          if (g.side !== s.side) return false;
+          if (s.side === 'n' || s.side === 's') return Math.abs(x - g.offset) < 4;
+          return Math.abs(z - g.offset) < 4;
+        });
+        if (isGap) continue;
+
+        result.push({ pos: [x, 0, z], rot: s.rot });
+      }
     }
     return result;
-  }, [radius, gaps]);
+  }, [halfW, halfH, gapPositions]);
 
   return (
     <group>
       {posts.map((p, i) => (
         <group key={i}>
-          {/* Fence post */}
           <mesh position={[p.pos[0], 1.0, p.pos[2]]}>
             <boxGeometry args={[0.3, 2.0, 0.3]} />
             <meshLambertMaterial color="#3a5a2a" />
           </mesh>
-          {/* Dense hedge between posts */}
-          <mesh position={[p.pos[0], 0.5, p.pos[2]]} rotation={[0, p.angle, 0]}>
-            <boxGeometry args={[1.2, 1.0, 3.0]} />
+          <mesh position={[p.pos[0], 0.5, p.pos[2]]} rotation={[0, p.rot, 0]}>
+            <boxGeometry args={[5, 1.0, 0.8]} />
             <meshLambertMaterial color="#2d5a27" />
           </mesh>
         </group>
@@ -165,19 +187,81 @@ function RoundFence({ radius, gaps }: { radius: number; gaps: number[] }) {
   );
 }
 
+// Central Boulevard banner arch — double-sided
+function BoulevardArch({ position }: { position: [number, number, number] }) {
+  const frontTex = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return createBannerTexture('SILICON VALLEY', '#1a1a2e', '#d4a017');
+  }, []);
+  const backTex = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return createBannerTexture('GIT WORLD', '#090612', '#f5c518');
+  }, []);
+
+  return (
+    <group position={position}>
+      {/* Left pillar */}
+      <mesh position={[-8, 4, 0]}>
+        <boxGeometry args={[1, 8, 1]} />
+        <meshLambertMaterial color="#555" />
+      </mesh>
+      {/* Right pillar */}
+      <mesh position={[8, 4, 0]}>
+        <boxGeometry args={[1, 8, 1]} />
+        <meshLambertMaterial color="#555" />
+      </mesh>
+      {/* Top beam */}
+      <mesh position={[0, 8.2, 0]}>
+        <boxGeometry args={[17, 0.5, 1.2]} />
+        <meshLambertMaterial color="#444" />
+      </mesh>
+      {/* Front banner (facing south/languages) */}
+      <mesh position={[0, 6.5, 0.55]}>
+        <planeGeometry args={[14, 2]} />
+        <meshBasicMaterial map={frontTex} side={THREE.FrontSide} />
+      </mesh>
+      {/* Back banner (facing north/companies) */}
+      <mesh position={[0, 6.5, -0.55]}>
+        <planeGeometry args={[14, 2]} />
+        <meshBasicMaterial map={backTex} side={THREE.FrontSide} />
+      </mesh>
+    </group>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LAYOUT CONSTANTS
+// Park is 200×200, centered at SV_CENTER
+// North section: 4 company campuses in single row
+// South section: 8 language districts in 2×4 grid
+// Main boulevard at z=-28, central road at z=17 (with Burj Khalifa)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PARK_HALF = SV_HALF; // 100 units from center to edge
+
+// Company campus positions — single row across the north
+const COMPANY_POSITIONS: Record<CompanyKey, [number, number, number]> = {
+  apple:  [-69, 0, -55],
+  google: [-23, 0, -55],
+  nvidia: [23, 0, -55],
+  meta:   [69, 0, -55],
+};
+
+// Language district grid — 2 rows × 4 columns
+const LANG_GRID_START_X = -69;
+const LANG_GRID_STEP_X  = 46;
+const LANG_GRID_START_Z = -5;
+const LANG_GRID_STEP_Z  = 47;
+
 export function SiliconValleyPark() {
   const isNight = useCityStore(s => s.isNight);
-
   const { companies, languageDevs } = useFetchAllSVData();
-
-  // Quadrant offset — spacious layout for radius 80 park
-  const Q_OFFSET = 40;
 
   return (
     <group position={[SV_CENTER.x, 0, SV_CENTER.z]}>
-      {/* ── Round grass overlay (sits just above city ground) ── */}
+      {/* ── Rectangular grass ground ── */}
       <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[SV_RADIUS, 48]} />
+        <planeGeometry args={[PARK_HALF * 2, PARK_HALF * 2]} />
         <meshLambertMaterial
           color="#5a9e28"
           emissive={isNight ? '#1a4a0a' : '#000'}
@@ -185,19 +269,20 @@ export function SiliconValleyPark() {
         />
       </mesh>
 
-      {/* ── Round perimeter fence with entrance gaps ── */}
-      <RoundFence
-        radius={SV_RADIUS - 1}
-        gaps={[
-          Math.PI,            // west entrance (from city center)
-          0,                  // east
-          Math.PI / 2,        // north
-          -Math.PI / 2,       // south
+      {/* ── Rectangular perimeter fence ── */}
+      <RectFence
+        halfW={PARK_HALF - 1}
+        halfH={PARK_HALF - 1}
+        gapPositions={[
+          { side: 'w', offset: 0 },  // west entrance (main, from city)
+          { side: 'e', offset: 0 },  // east entrance
+          { side: 'n', offset: 0 },  // north entrance
+          { side: 's', offset: 0 },  // south entrance
         ]}
       />
 
-      {/* ── Entrance pillars (west — faces city center) ── */}
-      <group position={[-(SV_RADIUS - 1), 0, 0]}>
+      {/* ── Main entrance pillars (west) ── */}
+      <group position={[-(PARK_HALF - 1), 0, 0]}>
         <mesh position={[0, 1.5, -2]}>
           <boxGeometry args={[0.6, 3, 0.6]} />
           <meshLambertMaterial color="#555" />
@@ -208,88 +293,270 @@ export function SiliconValleyPark() {
         </mesh>
       </group>
 
-      {/* ── Main entrance banner (west) ── */}
-      <CompanyBanner
+      {/* ── West entrance banner ── */}
+      <ParkBanner
         text="SILICON VALLEY"
         bgColor="#1a1a2e"
         textColor="#d4a017"
-        position={[-(SV_RADIUS - 1), 4, 0]}
+        position={[-(PARK_HALF - 1), 4, 0]}
         rotation={[0, Math.PI / 2, 0]}
       />
       {isNight && (
-        <pointLight position={[-(SV_RADIUS - 1), 4, 0]} color="#d4a017" intensity={3} distance={12} />
+        <pointLight position={[-(PARK_HALF - 1), 4, 0]} color="#d4a017" intensity={3} distance={12} />
       )}
 
-      {/* ── Cross paths from center to each quadrant ── */}
-      {/* North */}
-      <mesh position={[0, 0.06, Q_OFFSET / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[2.5, Q_OFFSET]} />
+      {/* ═══ MAIN BOULEVARD (z = -28, runs east-west) ═══ */}
+      <mesh position={[0, 0.06, -28]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 6]} />
         <meshLambertMaterial color="#8B7355" />
       </mesh>
-      {/* South */}
-      <mesh position={[0, 0.06, -Q_OFFSET / 2]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[2.5, Q_OFFSET]} />
-        <meshLambertMaterial color="#8B7355" />
+      <mesh position={[0, 0.07, -25]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
+        <meshLambertMaterial color="#d4a017" />
       </mesh>
-      {/* East */}
-      <mesh position={[Q_OFFSET / 2, 0.06, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-        <planeGeometry args={[2.5, Q_OFFSET]} />
-        <meshLambertMaterial color="#8B7355" />
-      </mesh>
-      {/* West — entrance path */}
-      <mesh position={[-Q_OFFSET / 2, 0.06, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
-        <planeGeometry args={[2.5, Q_OFFSET]} />
-        <meshLambertMaterial color="#8B7355" />
+      <mesh position={[0, 0.07, -31]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
+        <meshLambertMaterial color="#d4a017" />
       </mesh>
 
-      {/* ── Central Burj Khalifa Tower + Flying Banners ── */}
-      <BurjKhalifaTower />
-      <FlyingBanners />
+      {/* ═══ CENTRAL ROAD between language rows (z = 17) ═══ */}
+      <mesh position={[0, 0.06, 17]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 6]} />
+        <meshLambertMaterial color="#8B7355" />
+      </mesh>
+      <mesh position={[0, 0.07, 14]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
+        <meshLambertMaterial color="#d4a017" />
+      </mesh>
+      <mesh position={[0, 0.07, 20]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
+        <meshLambertMaterial color="#d4a017" />
+      </mesh>
 
-      {/* ── Company Banners at each quadrant entrance ── */}
-      <CompanyBanner text="APPLE" bgColor="#f5f5f7" textColor="#333333" position={[0, 4, Q_OFFSET - 4]} rotation={[0, 0, 0]} />
-      <CompanyBanner text="GOOGLE" bgColor="#ffffff" textColor="#4285f4" position={[Q_OFFSET - 4, 4, 0]} rotation={[0, Math.PI / 2, 0]} />
-      <CompanyBanner text="NVIDIA" bgColor="#1a1a1a" textColor="#76b900" position={[0, 4, -(Q_OFFSET - 4)]} rotation={[0, 0, 0]} />
-      <CompanyBanner text="META" bgColor="#0a1628" textColor="#0082fb" position={[-(Q_OFFSET - 4), 4, 0]} rotation={[0, Math.PI / 2, 0]} />
+      {/* ── Boulevard banner arches ── */}
+      <BoulevardArch position={[0, 0, -28]} />
+      <BoulevardArch position={[-55, 0, -28]} />
+      <BoulevardArch position={[55, 0, -28]} />
 
-      {/* ── Four Quadrants (compact) ── */}
-      <group position={[0, 0, Q_OFFSET]}>
+      {/* ── Burj Khalifa Tower (center of road between language rows) ── */}
+      <group position={[0, 0, 17]}>
+        <BurjKhalifaTower />
+        <FlyingBanners />
+      </group>
+
+      {/* ═══ NORTH — COMPANY CAMPUSES (single row) ═══ */}
+
+      {/* Company banners at each campus */}
+      <ParkBanner text="APPLE" bgColor="#f5f5f7" textColor="#333333"
+        position={[COMPANY_POSITIONS.apple[0], 4, COMPANY_POSITIONS.apple[2] + 22]} />
+      <ParkBanner text="GOOGLE" bgColor="#ffffff" textColor="#4285f4"
+        position={[COMPANY_POSITIONS.google[0], 4, COMPANY_POSITIONS.google[2] + 22]} />
+      <ParkBanner text="NVIDIA" bgColor="#1a1a1a" textColor="#76b900"
+        position={[COMPANY_POSITIONS.nvidia[0], 4, COMPANY_POSITIONS.nvidia[2] + 22]} />
+      <ParkBanner text="META" bgColor="#0a1628" textColor="#0082fb"
+        position={[COMPANY_POSITIONS.meta[0], 4, COMPANY_POSITIONS.meta[2] + 22]} />
+
+      {/* Four company quadrants */}
+      <group position={COMPANY_POSITIONS.apple}>
         <AppleQuadrant contributors={companies.apple} />
       </group>
-      <group position={[Q_OFFSET, 0, 0]}>
+      <group position={COMPANY_POSITIONS.google}>
         <GoogleQuadrant contributors={companies.google} />
       </group>
-      <group position={[0, 0, -Q_OFFSET]}>
+      <group position={COMPANY_POSITIONS.nvidia}>
         <NvidiaQuadrant contributors={companies.nvidia} />
       </group>
-      <group position={[-Q_OFFSET, 0, 0]}>
+      <group position={COMPANY_POSITIONS.meta}>
         <MetaQuadrant contributors={companies.meta} />
       </group>
 
-      {/* ── Language Districts (between quadrant corners) ── */}
+      {/* ═══ SOUTH — LANGUAGE DISTRICTS (2 rows × 4) ═══ */}
+
       {LANGUAGE_DISTRICTS.map(ld => {
-        const distR = SV_RADIUS * 0.65; // place along perimeter between quadrants
+        const x = LANG_GRID_START_X + ld.gridX * LANG_GRID_STEP_X;
+        const z = LANG_GRID_START_Z + ld.gridZ * LANG_GRID_STEP_Z;
         return (
-          <LanguageDistrict
-            key={ld.language}
-            language={ld.language}
-            color={ld.color}
-            position={[Math.cos(ld.angle) * distR, 0, Math.sin(ld.angle) * distR]}
-            developers={languageDevs[ld.language] ?? []}
-          />
+          <group key={ld.language}>
+            {/* Language monument */}
+            <group position={[x, 0, z - 6]}>
+              <LanguageMonument language={ld.language} color={ld.color} />
+            </group>
+            {/* Language district (devs + banner) */}
+            <LanguageDistrict
+              language={ld.language}
+              color={ld.color}
+              position={[x, 0, z]}
+              developers={languageDevs[ld.language] ?? []}
+            />
+          </group>
+        );
+      })}
+
+      {/* ── Hedge row between companies and boulevard ── */}
+      {Array.from({ length: 20 }).map((_, i) => (
+        <mesh key={`hedge-n-${i}`} position={[-90 + i * 10, 0.5, -33]} >
+          <boxGeometry args={[8, 1, 0.6]} />
+          <meshLambertMaterial color="#2d5a27" />
+        </mesh>
+      ))}
+
+      {/* ── Hedge row between boulevard and languages ── */}
+      {Array.from({ length: 20 }).map((_, i) => (
+        <mesh key={`hedge-s-${i}`} position={[-90 + i * 10, 0.5, -23]} >
+          <boxGeometry args={[8, 1, 0.6]} />
+          <meshLambertMaterial color="#2d5a27" />
+        </mesh>
+      ))}
+
+      {/* ── Boulevard lamp posts ── */}
+      {Array.from({ length: 10 }).map((_, i) => {
+        const x = -80 + i * 20;
+        return (
+          <group key={`blamp-${i}`}>
+            {/* North side lamp */}
+            <group position={[x, 0, -32]}>
+              <mesh position={[0, 2, 0]}>
+                <boxGeometry args={[0.15, 4, 0.15]} />
+                <meshLambertMaterial color="#555" />
+              </mesh>
+              <mesh position={[0, 4.2, 0]}>
+                <sphereGeometry args={[0.4, 8, 8]} />
+                <meshLambertMaterial
+                  color="#ffcc55"
+                  emissive={isNight ? '#ffcc55' : '#000'}
+                  emissiveIntensity={isNight ? 1.5 : 0}
+                />
+              </mesh>
+              {isNight && (
+                <pointLight position={[0, 4.2, 0]} color="#ffaa33" intensity={2} distance={15} />
+              )}
+            </group>
+            {/* South side lamp */}
+            <group position={[x, 0, -24]}>
+              <mesh position={[0, 2, 0]}>
+                <boxGeometry args={[0.15, 4, 0.15]} />
+                <meshLambertMaterial color="#555" />
+              </mesh>
+              <mesh position={[0, 4.2, 0]}>
+                <sphereGeometry args={[0.4, 8, 8]} />
+                <meshLambertMaterial
+                  color="#ffcc55"
+                  emissive={isNight ? '#ffcc55' : '#000'}
+                  emissiveIntensity={isNight ? 1.5 : 0}
+                />
+              </mesh>
+              {isNight && (
+                <pointLight position={[0, 4.2, 0]} color="#ffaa33" intensity={2} distance={15} />
+              )}
+            </group>
+          </group>
         );
       })}
 
       {/* ── Park ambient lighting (night) ── */}
       {isNight && (
         <>
-          <pointLight position={[0, 6, 0]} color="#ffe8b0" intensity={3} distance={SV_RADIUS * 1.2} decay={1.5} />
-          <pointLight position={[Q_OFFSET, 3, 0]} color="#4285f4" intensity={1.5} distance={35} />
-          <pointLight position={[-Q_OFFSET, 3, 0]} color="#0082fb" intensity={1.5} distance={35} />
-          <pointLight position={[0, 3, Q_OFFSET]} color="#c0c0c0" intensity={1.5} distance={35} />
-          <pointLight position={[0, 3, -Q_OFFSET]} color="#76b900" intensity={1.5} distance={35} />
+          {/* Boulevard glow */}
+          <pointLight position={[0, 8, -28]} color="#ffe8b0" intensity={3} distance={PARK_HALF * 1.2} decay={1.5} />
+          {/* Company zone lights */}
+          <pointLight position={COMPANY_POSITIONS.apple} color="#c0c0c0" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.google} color="#4285f4" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.nvidia} color="#76b900" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.meta} color="#0082fb" intensity={1.5} distance={40} />
+          {/* Central road glow */}
+          <pointLight position={[0, 8, 17]} color="#ffe8b0" intensity={2} distance={60} />
         </>
       )}
+
+      {/* ═══ TREES ═══ */}
+
+      {/* Trees between company campuses (border columns) */}
+      {[-46, 0, 46].map((x, gi) =>
+        Array.from({ length: 5 }).map((_, j) => (
+          <group key={`btree-${gi}-${j}`} position={[x, 0, -72 + j * 9]}>
+            <mesh position={[0, 1.2, 0]}>
+              <boxGeometry args={[0.5, 2.4, 0.5]} />
+              <meshLambertMaterial color="#8B4513" />
+            </mesh>
+            <mesh position={[0, 3.2, 0]}>
+              <boxGeometry args={[3, 3, 3]} />
+              <meshLambertMaterial color="#2d8a2d" emissive={isNight ? '#0d1f0a' : '#000'} emissiveIntensity={isNight ? 0.3 : 0} />
+            </mesh>
+          </group>
+        ))
+      )}
+
+      {/* Trees along west perimeter */}
+      {Array.from({ length: 8 }).map((_, i) => (
+        <group key={`ptw-${i}`} position={[-95, 0, -75 + i * 22]}>
+          <mesh position={[0, 1.5, 0]}>
+            <boxGeometry args={[0.6, 3, 0.6]} />
+            <meshLambertMaterial color="#8B4513" />
+          </mesh>
+          <mesh position={[0, 4, 0]}>
+            <boxGeometry args={[4, 3.5, 4]} />
+            <meshLambertMaterial color="#228B22" emissive={isNight ? '#0a1f0a' : '#000'} emissiveIntensity={isNight ? 0.3 : 0} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Trees along east perimeter */}
+      {Array.from({ length: 8 }).map((_, i) => (
+        <group key={`pte-${i}`} position={[95, 0, -75 + i * 22]}>
+          <mesh position={[0, 1.5, 0]}>
+            <boxGeometry args={[0.6, 3, 0.6]} />
+            <meshLambertMaterial color="#8B4513" />
+          </mesh>
+          <mesh position={[0, 4, 0]}>
+            <boxGeometry args={[4, 3.5, 4]} />
+            <meshLambertMaterial color="#228B22" emissive={isNight ? '#0a1f0a' : '#000'} emissiveIntensity={isNight ? 0.3 : 0} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Southern garden grove */}
+      {Array.from({ length: 6 }).map((_, i) =>
+        Array.from({ length: 3 }).map((_, j) => (
+          <group key={`gtree-${i}-${j}`} position={[-70 + i * 28, 0, 62 + j * 12]}>
+            <mesh position={[0, 1.5, 0]}>
+              <boxGeometry args={[0.6, 3, 0.6]} />
+              <meshLambertMaterial color="#6B4226" />
+            </mesh>
+            <mesh position={[0, 4.2, 0]}>
+              <boxGeometry args={[4.5, 4, 4.5]} />
+              <meshLambertMaterial color="#1a8a1a" emissive={isNight ? '#0a1f0a' : '#000'} emissiveIntensity={isNight ? 0.3 : 0} />
+            </mesh>
+          </group>
+        ))
+      )}
+
+      {/* North perimeter trees */}
+      {Array.from({ length: 8 }).map((_, i) => (
+        <group key={`ptn-${i}`} position={[-75 + i * 22, 0, -95]}>
+          <mesh position={[0, 1.5, 0]}>
+            <boxGeometry args={[0.6, 3, 0.6]} />
+            <meshLambertMaterial color="#8B4513" />
+          </mesh>
+          <mesh position={[0, 4, 0]}>
+            <boxGeometry args={[4, 3.5, 4]} />
+            <meshLambertMaterial color="#228B22" emissive={isNight ? '#0a1f0a' : '#000'} emissiveIntensity={isNight ? 0.3 : 0} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Decorative trees flanking central road */}
+      {[-80, -50, 50, 80].map((x, i) => (
+        <group key={`rtree-${i}`} position={[x, 0, 17]}>
+          <mesh position={[0, 1.2, 0]}>
+            <boxGeometry args={[0.5, 2.4, 0.5]} />
+            <meshLambertMaterial color="#8B4513" />
+          </mesh>
+          <mesh position={[0, 3, 0]}>
+            <boxGeometry args={[3, 2.5, 3]} />
+            <meshLambertMaterial color="#2d8a2d" emissive={isNight ? '#0d1f0a' : '#000'} emissiveIntensity={isNight ? 0.3 : 0} />
+          </mesh>
+        </group>
+      ))}
     </group>
   );
 }

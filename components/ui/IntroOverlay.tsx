@@ -365,7 +365,7 @@ export function IntroOverlay() {
                   textShadow: '0 0 20px rgba(245,197,24,0.3)',
                 }}
               >
-                {`"Where Every Developer Has a Building"`}
+                {`"Where Code Builds Cities"`}
               </p>
               <p
                 style={{

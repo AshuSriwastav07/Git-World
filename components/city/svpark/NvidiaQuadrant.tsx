@@ -20,20 +20,46 @@ interface Contributor {
 const WAVE_HEIGHTS = [7, 6, 5, 3, 3, 4, 5, 6, 7, 8];
 
 const WALK_PATHS: [number, number, number][][] = [
-  [[-12, 0, 12], [12, 0, 12], [-12, 0, 12]],
-  [[15, 0, 5], [15, 0, 20], [15, 0, 5]],
-  [[-15, 0, 16], [0, 0, 8], [-15, 0, 16]],
+  [[-7, 0, 10], [7, 0, 10], [-7, 0, 10]],
+  [[0, 0, 9], [0, 0, 16], [0, 0, 9]],
+  [[-5, 0, 14], [5, 0, 10], [-5, 0, 14]],
+  [[3, 0, 9], [-3, 0, 15], [3, 0, 9]],
 ];
+
+function companyBehavior(pos: number): BehaviorType {
+  if (pos <= 9) return 1;   // walking_laptop
+  if (pos <= 16) return 6;  // sitting_bench
+  if (pos <= 20) return 2;  // eating
+  if (pos <= 23) return 4;  // pacing
+  if (pos <= 26) return 5;  // standing_laptop
+  return 3;                 // chatting
+}
 
 function generateCharacterSlots(count: number) {
   const slots: { pos: [number, number, number]; rot: number; behavior: BehaviorType; walkPath?: [number, number, number][] }[] = [];
-  for (let i = 0; i < count; i++) {
-    const behavior = (i % 7) as BehaviorType;
-    const row = Math.floor(i / 5);
-    const col = i % 5;
-    const pos: [number, number, number] = [-8 + col * 4, 0, 12 + row * 5];
-    const walkPath = (behavior === 1 || behavior === 4) ? WALK_PATHS[i % WALK_PATHS.length] : undefined;
-    slots.push({ pos: walkPath ? walkPath[0] : pos, rot: Math.PI, behavior, walkPath });
+  const max = Math.min(count, 30);
+  // 3 rows × 10 in front of NVIDIA HQ, all within campus
+  const ROWS = [
+    { z: 9, xRange: 8 },
+    { z: 12.5, xRange: 9 },
+    { z: 16, xRange: 8 },
+  ];
+  let placed = 0;
+  for (const row of ROWS) {
+    if (placed >= max) break;
+    const n = Math.min(10, max - placed);
+    for (let i = 0; i < n; i++) {
+      const behavior = companyBehavior(placed);
+      const x = n === 1 ? 0 : -row.xRange + (i / (n - 1)) * row.xRange * 2;
+      const pos: [number, number, number] = [x, 0, row.z];
+      let walkPath: [number, number, number][] | undefined;
+      if (behavior === 1 || behavior === 4) {
+        const wp = WALK_PATHS[placed % WALK_PATHS.length];
+        walkPath = wp.map(p => [p[0] * 0.8, p[1], p[2]] as [number, number, number]);
+      }
+      slots.push({ pos: walkPath ? walkPath[0] : pos, rot: Math.PI, behavior, walkPath });
+      placed++;
+    }
   }
   return slots;
 }
@@ -105,8 +131,8 @@ export function NvidiaQuadrant({ contributors }: { contributors: Contributor[] }
 
       {/* Sparse wider-spaced trees */}
       {[
-        [-22, 0, -10], [22, 0, -10], [-22, 0, 10], [22, 0, 10],
-        [-16, 0, 18], [16, 0, 18], [0, 0, -14],
+        [-16, 0, -8], [16, 0, -8], [-16, 0, 8], [16, 0, 8],
+        [-12, 0, 15], [12, 0, 15], [0, 0, -10],
       ].map((pos, i) => (
         <group key={`tree-${i}`} position={pos as [number, number, number]}>
           <mesh position={[0, 1.2, 0]}>
@@ -179,7 +205,7 @@ export function NvidiaQuadrant({ contributors }: { contributors: Contributor[] }
             behavior={s.behavior}
             walkPath={s.walkPath}
             walkSpeed={0.5}
-            containmentRadius={28}
+            containmentRadius={5}
             citySlot={c.citySlot}
             cityRank={c.cityRank}
             totalScore={c.totalScore}

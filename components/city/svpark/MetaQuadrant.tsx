@@ -18,20 +18,46 @@ interface Contributor {
 }
 
 const WALK_PATHS: [number, number, number][][] = [
-  [[-12, 0, 8], [12, 0, 8], [-12, 0, 8]],
-  [[0, 0, 12], [0, 0, 24], [0, 0, 12]],
-  [[-16, 0, 16], [8, 0, 20], [-16, 0, 16]],
+  [[-8, 0, 8], [8, 0, 8], [-8, 0, 8]],
+  [[0, 0, 7], [0, 0, 15], [0, 0, 7]],
+  [[-6, 0, 13], [6, 0, 9], [-6, 0, 13]],
+  [[4, 0, 7], [-4, 0, 14], [4, 0, 7]],
 ];
+
+function companyBehavior(pos: number): BehaviorType {
+  if (pos <= 9) return 1;   // walking_laptop
+  if (pos <= 16) return 6;  // sitting_bench
+  if (pos <= 20) return 2;  // eating
+  if (pos <= 23) return 4;  // pacing
+  if (pos <= 26) return 5;  // standing_laptop
+  return 3;                 // chatting
+}
 
 function generateCharacterSlots(count: number) {
   const slots: { pos: [number, number, number]; rot: number; behavior: BehaviorType; walkPath?: [number, number, number][] }[] = [];
-  for (let i = 0; i < count; i++) {
-    const behavior = (i % 7) as BehaviorType;
-    const row = Math.floor(i / 6);
-    const col = i % 6;
-    const pos: [number, number, number] = [-7 + col * 3, 0, 10 + row * 5];
-    const walkPath = (behavior === 1 || behavior === 4) ? WALK_PATHS[i % WALK_PATHS.length] : undefined;
-    slots.push({ pos: walkPath ? walkPath[0] : pos, rot: Math.PI, behavior, walkPath });
+  const max = Math.min(count, 30);
+  // 3 rows × 10 in front of Meta HQ, all within campus
+  const ROWS = [
+    { z: 7, xRange: 9 },
+    { z: 10.5, xRange: 10 },
+    { z: 14, xRange: 9 },
+  ];
+  let placed = 0;
+  for (const row of ROWS) {
+    if (placed >= max) break;
+    const n = Math.min(10, max - placed);
+    for (let i = 0; i < n; i++) {
+      const behavior = companyBehavior(placed);
+      const x = n === 1 ? 0 : -row.xRange + (i / (n - 1)) * row.xRange * 2;
+      const pos: [number, number, number] = [x, 0, row.z];
+      let walkPath: [number, number, number][] | undefined;
+      if (behavior === 1 || behavior === 4) {
+        const wp = WALK_PATHS[placed % WALK_PATHS.length];
+        walkPath = wp.map(p => [p[0] * 0.8, p[1], p[2]] as [number, number, number]);
+      }
+      slots.push({ pos: walkPath ? walkPath[0] : pos, rot: Math.PI, behavior, walkPath });
+      placed++;
+    }
   }
   return slots;
 }
@@ -138,9 +164,9 @@ export function MetaQuadrant({ contributors }: { contributors: Contributor[] }) 
 
       {/* Uniform perimeter trees */}
       {[
-        [-18, 0, -8], [-12, 0, -8], [-6, 0, -8], [0, 0, -8], [6, 0, -8], [12, 0, -8], [18, 0, -8],
-        [-18, 0, 8], [18, 0, 8],
-        [-18, 0, 18], [-6, 0, 18], [6, 0, 18], [18, 0, 18],
+        [-16, 0, -7], [-10, 0, -7], [-4, 0, -7], [4, 0, -7], [10, 0, -7], [16, 0, -7],
+        [-16, 0, 7], [16, 0, 7],
+        [-16, 0, 15], [-6, 0, 15], [6, 0, 15], [16, 0, 15],
       ].map((pos, i) => (
         <group key={`tree-${i}`} position={pos as [number, number, number]}>
           <mesh position={[0, 1, 0]}>
@@ -214,7 +240,7 @@ export function MetaQuadrant({ contributors }: { contributors: Contributor[] }) 
             behavior={s.behavior}
             walkPath={s.walkPath}
             walkSpeed={0.5}
-            containmentRadius={28}
+            containmentRadius={5}
             citySlot={c.citySlot}
             cityRank={c.cityRank}
             totalScore={c.totalScore}

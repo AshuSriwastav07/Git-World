@@ -18,19 +18,39 @@ interface Contributor {
 }
 
 const WALK_PATHS: [number, number, number][][] = [
-  [[10, 0, 20], [20, 0, 8], [10, 0, 20]],
-  [[-8, 0, 18], [8, 0, 25], [-8, 0, 18]],
-  [[15, 0, 15], [22, 0, 22], [15, 0, 15]],
+  [[3, 0, 4], [6, 0, -2], [-3, 0, 3], [3, 0, 4]],
+  [[-4, 0, 3], [2, 0, 6], [-5, 0, -2], [-4, 0, 3]],
+  [[-3, 0, -4], [4, 0, -3], [2, 0, 5], [-3, 0, -4]],
+  [[5, 0, 2], [-2, 0, -5], [-4, 0, 4], [5, 0, 2]],
 ];
+
+function companyBehavior(pos: number): BehaviorType {
+  if (pos <= 9) return 1;   // walking_laptop
+  if (pos <= 16) return 6;  // sitting_bench
+  if (pos <= 20) return 2;  // eating
+  if (pos <= 23) return 4;  // pacing
+  if (pos <= 26) return 5;  // standing_laptop
+  return 3;                 // chatting
+}
 
 function generateCharacterSlots(count: number) {
   const slots: { pos: [number, number, number]; rot: number; behavior: BehaviorType; walkPath?: [number, number, number][] }[] = [];
-  for (let i = 0; i < count; i++) {
-    const behavior = (i % 7) as BehaviorType;
-    const angle = (i / 14) * Math.PI * 1.5 - Math.PI * 0.25;
-    const r = 18 + (i % 3) * 5;
+  const max = Math.min(count, 30);
+  // Place in concentric rings inside the courtyard (radius 3–12)
+  for (let i = 0; i < max; i++) {
+    const behavior = companyBehavior(i);
+    const ring = Math.floor(i / 10);
+    const idx = i % 10;
+    const r = 4 + ring * 3.5;
+    const angle = (idx / 10) * Math.PI * 2 + ring * 0.3;
     const pos: [number, number, number] = [Math.cos(angle) * r, 0, Math.sin(angle) * r];
-    const walkPath = (behavior === 1 || behavior === 4) ? WALK_PATHS[i % WALK_PATHS.length] : undefined;
+    // Walking devs get short contained paths
+    let walkPath: [number, number, number][] | undefined;
+    if (behavior === 1 || behavior === 4) {
+      walkPath = WALK_PATHS[i % WALK_PATHS.length].map(p =>
+        [p[0] * 0.8, 0, p[2] * 0.8] as [number, number, number]
+      );
+    }
     slots.push({ pos: walkPath ? walkPath[0] : pos, rot: angle + Math.PI, behavior, walkPath });
   }
   return slots;
@@ -71,9 +91,9 @@ export function AppleQuadrant({ contributors }: { contributors: Contributor[] })
   // Perimeter trees
   const perimeterTrees = useMemo(() => {
     const trees: [number, number, number][] = [];
-    for (let i = 0; i < 10; i++) {
-      const angle = (i / 10) * Math.PI * 2;
-      trees.push([Math.cos(angle) * 32, 0, Math.sin(angle) * 32]);
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      trees.push([Math.cos(angle) * 20, 0, Math.sin(angle) * 20]);
     }
     return trees;
   }, []);
@@ -192,11 +212,11 @@ export function AppleQuadrant({ contributors }: { contributors: Contributor[] })
 
       {/* Benches */}
       {[
-        [25, 0.15, 15] as [number, number, number],
-        [25, 0.15, -15] as [number, number, number],
-        [-25, 0.15, 15] as [number, number, number],
-        [-25, 0.15, -15] as [number, number, number],
-        [30, 0.15, 0] as [number, number, number],
+        [16, 0.15, 12] as [number, number, number],
+        [16, 0.15, -12] as [number, number, number],
+        [-16, 0.15, 12] as [number, number, number],
+        [-16, 0.15, -12] as [number, number, number],
+        [18, 0.15, 0] as [number, number, number],
       ].map((pos, i) => (
         <group key={`bench-${i}`} position={pos}>
           <mesh position={[0, 0.5, 0]}>
@@ -216,10 +236,10 @@ export function AppleQuadrant({ contributors }: { contributors: Contributor[] })
 
       {/* Lamp posts */}
       {[
-        [30, 0, 15] as [number, number, number],
-        [30, 0, -15] as [number, number, number],
-        [22, 0, 25] as [number, number, number],
-        [-22, 0, 25] as [number, number, number],
+        [18, 0, 10] as [number, number, number],
+        [18, 0, -10] as [number, number, number],
+        [-18, 0, 10] as [number, number, number],
+        [-18, 0, 10] as [number, number, number],
       ].map((pos, i) => (
         <group key={`lamp-${i}`} position={pos}>
           <mesh position={[0, 1.5, 0]}>
@@ -241,7 +261,7 @@ export function AppleQuadrant({ contributors }: { contributors: Contributor[] })
       ))}
 
       {/* Ground logo — white Apple silhouette */}
-      <mesh position={[25, 0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.06, 18]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[2, 16]} />
         <meshLambertMaterial
           color="#e0e0e0"
@@ -265,7 +285,7 @@ export function AppleQuadrant({ contributors }: { contributors: Contributor[] })
             behavior={s.behavior}
             walkPath={s.walkPath}
             walkSpeed={0.5}
-            containmentRadius={30}
+            containmentRadius={12}
             citySlot={c.citySlot}
             cityRank={c.cityRank}
             totalScore={c.totalScore}
