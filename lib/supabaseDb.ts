@@ -405,6 +405,8 @@ async function doUpsert(userData: Omit<CityUser, 'citySlot' | 'cityRank' | 'firs
     return null;
   }
 
+  if (!data) return null;
+
   // Push a live event
   await sb.from('live_events').insert({
     type:   'join',
