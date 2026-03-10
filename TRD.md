@@ -1,160 +1,209 @@
-# GIT WORLD � TECHNICAL REQUIREMENTS DOCUMENT (TRD)
-## Complete Architecture & Implementation Spec
-### Version 2.0 | For Next.js 16 + Supabase + React Three Fiber | Developer: Ashusriwastav07
+# GIT WORLD – TECHNICAL REQUIREMENTS DOCUMENT (TRD)
+## Complete Architecture & Implementation Specification
+### Version 3.0 (Code-Accurate) | Next.js 16 + React 19 + Three.js + Supabase | Creator: Ashusriwastav07
 
 ---
 
-# EXECUTIVE SUMMARY 
+# EXECUTIVE SUMMARY
 
-This document defines the complete technical architecture for Git World � a 3D interactive city rendered in the browser where every GitHub developer becomes a building. All decisions flow from three immutable rules: HEIGHT=commits, WIDTH=repos, COLOR=language.
+**Git World** uses a client-rendered 3D architecture with real-time data synchronization. Frontend: Next.js 16 with React Three Fiber for 3D rendering and Zustand for state. Backend: Supabase PostgreSQL for persistence, GitHub API for data, Vercel cron for daily jobs. All buildings render via InstancedMesh (2 GPU draw calls). Supabase realtime subscriptions push new users to all connected clients instantly.
 
-**Core Stack:**
-- Frontend: Next.js 16 (App Router), React 19, TypeScript 5
-- 3D: Three.js r190+, React Three Fiber, Drei  
-- State: Zustand for client state
-- Database: Supabase (PostgreSQL + PostgREST + Realtime)
-- GitHub APIv4 (GraphQL) with token rotation
-- Styling: Tailwind CSS 4, Press Start 2P font
-
-**Key Architecture Decisions:**
-- InstancedMesh for 5000+ buildings (2 GPU draw calls total)
-- Server-Sent Events (SSE) for real-time discovery stream
-- Canvas-generated textures for all architecture
-- Pre-allocated Vector3/Quaternion objects (zero GC pressure in render loop)
-- Supabase realtime subscriptions for live city updates
-- Edge Function cron jobs for nightly rank recalculation
+**Core Facts:**
+- Memory cap: 10,000 users (Zustand enforces)
+- Building height formula: Rank + commit logarithmic factor
+- Window texture: Procedurally generated, cached by stats bucket
+- City grid: Spiral layout, 140×140 slots, SLOT_PITCH=5.0
+- Three.js: InstancedMesh for main buildings, separate geometries for parks/trending
+- GitHub API: 28 parallel searches, 5000/hr per token × 3 = 15K/hr capacity
 
 ---
 
-# 1. SYSTEM ARCHITECTURE
+# 1. TECH STACK & DEPENDENCIES
 
-## 1.1 High-Level Diagram
+## 1.1  Frontend Dependencies
 
-```
-+-------------------------------------------------------------+
-�                      BROWSER (Client)                        �
-�  Next.js App (React 19 + TypeScript)                         �
-�  +------------------------------------------------------+   �
-�  � /app/page.tsx                                        �   �
-�  � +- CityScene (R3F Canvas)                            �   �
-�  � �  +- CityGrid (InstancedMesh, 5000 buildings)      �   �
-�  � �  +- TechPark (60 animated characters)             �   �
-�  � �  +- SiliconValleyPark (4 campuses + 8 languages)  �   �
-�  � �  +- TrendingDistrict (top 20 repos)               �   �
-�  � �  +- AirplaneMode (flyable 3D plane)               �   �
-�  � �  +- CameraController (orbit + WASD + cinematic)  �   �
-�  � +- HUD (React DOM overlay)                          �   �
-�  �    +- ModeMenu (5-way experience picker)            �   �
-�  �    +- SearchBar, ProfileModal, RankChart           �   �
-�  �    +- MiniMap, TopFiveWidget, LiveFeed             �   �
-�  �    +- IntroOverlay (cinematic sequence)             �   �
-�  �                                                       �   �
-�  � Zustand Store (cityStore.ts):                        �   �
-�  � +- users Map<string, SlimUser>                      �   �
-�  � +- activeMode: "menu" | "explore" | "fly" ...       �   �
-�  � +- isNight, flightMode, selectedBuilding            �   �
-�  � +- Realtime subscriptions                           �   �
-�  +------------------------------------------------------+   �
-+-------------------------------------------------------------+
-                            ? HTTP/WebSocket
-+-------------------------------------------------------------+
-�            EDGE RUNTIME (Next.js API Routes)                 �
-�  /api/github/[username]     - Single user profile            �
-�  /api/github/stream         - SSE discovery stream           �
-�  /api/silicon-valley        - SV park data (companies/langs) �
-�  /api/trending              - Top 20 repos of week           �
-�  /api/city/users            - Paginated city users           �
-�  /api/city/add              - Add/update developer           �
-+-------------------------------------------------------------+
-                            ? Network
-+--------------------------------------------------------------+
-�          BACKEND: Supabase (Cloud PostgreSQL)                �
-�  Database Schema:                                            �
-�  +- public.city_users (all developers)                       �
-�  +- public.trending_repos (top 20 weekly)                    �
-�  +- public.sv_contributors (company/language devs)           �
-�  +- Realtime tables with PostgreSQL subscriptions            �
-�                                                               �
-�  Auth: Anonymous (no login required)                         �
-�  Storage: Avatar images cached via Supabase CDN              �
-+--------------------------------------------------------------+
-            ?
-+--------------------------------------------------------------+
-�         EXTERNAL APIs: GitHub API v4 (GraphQL)               �
-�  Token rotation (3 PATs � 5000 req/hr = 15000 total)         �
-�  Discovery queries (30 parallel searches)                    �
-�  User profile enrichment (repos, events, stats)              �
-+--------------------------------------------------------------+
+```json
+{
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "@supabase/supabase-js": "^2.98.0",
+    "next": "16.1.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "three": "^0.183.2",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.183.1",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
 ```
 
----
+### Key Versions:
+- **Next.js 16.1.6**: App Router, API routes, server-side features
+- **React 19.2.3**: New hooks, concurrent features
+- **React Three Fiber 9.5.0**: React bindings for Three.js, Canvas, useFrame, useThree
+- **Drei 10.7.7**: Sky, Stars, OrbitControls, Html, AdaptiveDpr, SceneErrorBoundary
+- **Three.js 0.183.2**: 3D graphics, materials, geometry, InstancedMesh
+- **Zustand 5.0.11**: Lightweight state management, no boilerplate
+- **@supabase/supabase-js 2.98.0**: PostgreSQL client + realtime subscriptions
+- **TypeScript 5**: Strict mode enabled
+- **Tailwind CSS 4**: Utility styling
 
-# 2. TECH STACK DETAILS
-
-## 2.1 Frontend Dependencies
-
-| Package | Version | Purpose  |
-|---------|---------|----------|
-| next | 16.1.6 | App Router, API routes, SSR |
-| react | 19 | UI library |
-| typescript | 5 | Type safety |
-| @react-three/fiber | ^8 | React bindings for Three.js |
-| @react-three/drei | ^9 | Helpers (Sky, Stars, OrbitControls, Html, AdaptiveDpr) |
-| three | 0.183+ | 3D rendering engine |
-| zustand | ^4 | Lightweight state management |
-| @supabase/supabase-js | ^2 | Supabase client |
-| tailwindcss | 4 | Utility CSS framework |
-| google-fonts | (Press Start 2P) | Minecraft aesthetic typography |
-
-## 2.2 Development Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| @types/node | ^20 | Node.js type definitions |
-| @types/three | ^0.183 | Three.js types |
-| @types/react | 19 | React types |
-| tailwindcss | 4 | CSS framework dev |
-| typescript | 5 | TypeScript compiler |
-| eslint | ^9 | Linting |
+## 1.2 Fonts
+- **Press Start 2P**: Pixel-art aesthetic (header, titles, UI text)
+- **Space Mono**: Monospace (body text, code-like UI)
 
 ---
 
-# 3. DATABASE SCHEMA (Supabase PostgreSQL)
+# 2. REPOSITORY STRUCTURE
+
+```
+minecraft-gitcity/
+├── app/
+│   ├── api/
+│   │   ├── city/
+│   │   │   ├── add/route.ts           # POST: Add/update user
+│   │   │   └── users/route.ts         # GET: Paginated city users
+│   │   ├── cron/
+│   │   │   └── recalculate-ranks/route.ts  # GET: Recalc ranks daily
+│   │   ├── daily-refresh/route.ts     # GET: Combined cron
+│   │   ├── github/
+│   │   │   ├── [username]/route.ts    # GET: Single user profile
+│   │   │   └── stream/route.ts        # GET: SSE discovery
+│   │   ├── silicon-valley/
+│   │   │   ├── contributors/route.ts  # GET: Company/language devs
+│   │   │   ├── refresh/route.ts       # POST: Refresh SV data
+│   │   │   └── seed/route.ts          # POST: Seed SV data
+│   │   └── trending/
+│   │       ├── refresh/route.ts       # POST: Refresh trending repos
+│   │       └── route.ts               # GET: Active trending repos
+│   ├── page.tsx                       # Root page, orchestrates loading
+│   ├── layout.tsx                     # <html>, fonts, OG tags
+│   └── globals.css                    # Tailwind + reset
+├── components/
+│   ├── city/
+│   │   ├── Building.tsx               # Single building mesh
+│   │   ├── BuildingSpotlight.tsx      # God ray effect
+│   │   ├── CameraController.tsx       # Orbit + keyboard controls
+│   │   ├── CityGrid.tsx               # InstancedMesh for all buildings
+│   │   ├── CityGround.tsx             # Minecraft grass plane
+│   │   ├── CityScene.tsx              # Canvas wrapper, scene setup
+│   │   ├── GodRaySpotlight.tsx        # Blue spotlight, pulsing halo
+│   │   ├── ParkCharacter.tsx          # Tech Park character (stub)
+│   │   ├── PocketPark.tsx             # Tech Park (stub)
+│   │   ├── PromoBannerPlanes.tsx      # Flying banners
+│   │   ├── SceneErrorBoundary.tsx     # 3D error boundary
+│   │   ├── SiliconValleyPark.tsx      # SV Park container
+│   │   ├── TechPark.tsx               # Tech Park container (stub)
+│   │   ├── TrendingDistrict.tsx       # Trending repos district
+│   │   ├── WindowSparkleLayer.tsx     # Glitter effect (optional)
+│   │   ├── airplane/
+│   │   │   ├── Airplane.tsx           # Plane mesh
+│   │   │   ├── AirplaneMode.tsx       # Flight system
+│   │   │   └── FlightCamera.ts        # 3rd-person camera logic
+│   │   └── svpark/
+│   │       ├── AppleQuadrant.tsx      # Apple campus
+│   │       ├── BurjKhalifaTower.tsx   # Central tower
+│   │       ├── FlyingBanners.tsx      # Orbiting banners
+│   │       ├── GoogleQuadrant.tsx     # Google campus
+│   │       ├── LanguageDistrict.tsx   # Language zones (8)
+│   │       ├── LanguageMonument.tsx   # Language marker
+│   │       ├── MetaQuadrant.tsx       # Meta campus
+│   │       └── NvidiaQuadrant.tsx     # NVIDIA campus
+│   ├── intro/
+│   │   └── CinematicIntro.tsx         # 25s intro sequence
+│   └── ui/
+│       ├── AirplaneHUD.tsx            # Flight HUD
+│       ├── Controls.tsx               # Keyboard help modal
+│       ├── GitHubStars.tsx            # Star count widget
+│       ├── GitWorldLogo.tsx           # Logo component
+│       ├── HUD.tsx                    # Main HUD wrapper
+│       ├── IntroButtons.tsx           # Intro button row
+│       ├── IntroOverlay.tsx           # Intro background
+│       ├── JoinToast.tsx              # New user notification
+│       ├── LiveFeed.tsx               # Event ticker
+│       ├── LoadingScreen.tsx          # Loading bar overlay
+│       ├── MiniMap.tsx                # Overhead view
+│       ├── ModeMenu.tsx               # 5-way mode selector
+│       ├── ProfileModal.tsx           # Developer profile card
+│       ├── RankChart.tsx              # Top 100 leaderboard table
+│       ├── RepoProfilePanel.tsx       # Trending repo details
+│       ├── SearchBar.tsx              # GitHub username search
+│       └── TopFiveWidget.tsx          # Top 5 mini leaderboard
+├── lib/
+│   ├── buildingGeometry.ts            # Mesh specs for building parts
+│   ├── cityLayout.ts                  # Slot→world mapping, building dimensions
+│   ├── cityStore.ts                   # Zustand store (central state)
+│   ├── cityStream.ts                  # SSE stream consumer
+│   ├── githubTokens.ts                # Token rotation logic
+│   ├── supabase.ts                    # Supabase client config
+│   ├── supabaseDb.ts                  # Database query functions
+│   ├── textureGenerator.ts            # Window texture generation
+│   └── trendingStore.ts               # Zustand trending repos store
+├── supabase/
+│   └── migrations/
+│       ├── 001_sv_data_fix.sql        # SV park schema
+│       ├── 002_sv_source_column.sql   # Language devs schema
+│       └── 20260308_trending_repos.sql # Trending repos schema
+├── public/
+│   ├── favicon.png
+│   └── Logo.png
+├── .env.local                         # Secrets (not in repo)
+├── eslint.config.mjs
+├── next.config.ts                     # Next.js config
+├── package.json
+├── postcss.config.mjs
+├── tsconfig.json
+├── tsconfig.tsbuildinfo
+├── vercel.json                        # Cron job definitions
+├── PRD.md                             # Product requirements (v3.0)
+├── TRD.md                             # Technical requirements (v3.0)
+├── README.md                          # User-facing overview
+└── CONTRIBUTING.md                    # Dev guidelines
+```
+
+---
+
+# 3. SUPABASE SCHEMA (PostgreSQL)
 
 ## 3.1 city_users Table
 
+**Primary table:** All developer profiles and city rankings.
+
 ```sql
 CREATE TABLE public.city_users (
-  -- GitHub Profile
   login TEXT PRIMARY KEY,
   name TEXT,
   avatar_url TEXT,
   bio TEXT,
   location TEXT,
   company TEXT,
-  github_join_year INTEGER,
-  
-  -- Metrics
+  github_created_at TEXT,
   public_repos INTEGER DEFAULT 0,
   followers INTEGER DEFAULT 0,
   following INTEGER DEFAULT 0,
   total_stars INTEGER DEFAULT 0,
   total_forks INTEGER DEFAULT 0,
-  top_language TEXT,
+  top_language TEXT DEFAULT 'Unknown',
   estimated_commits INTEGER DEFAULT 0,
-  recent_activity INTEGER DEFAULT 0,  -- 0-100 score
-  
-  -- City Assignment
-  city_slot INTEGER UNIQUE,  -- Permanent position (0-21024)
-  city_rank INTEGER,         -- Updates when sorting changes
-  total_score FLOAT DEFAULT 0,  -- commits�3 + stars�2 + followers + repos�0.5
-  
-  -- Metadata
-  added_at TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ,
-  added_by TEXT,  -- "discovery" | "search" | "admin"
-  
-  CONSTRAINT city_slot_unique CHECK (city_slot IS NOT NULL OR city_slot IS NULL)
+  recent_activity INTEGER DEFAULT 0,
+  total_score FLOAT DEFAULT 0,
+  top_repos JSONB DEFAULT '[]',
+  city_slot INTEGER UNIQUE,
+  city_rank INTEGER,
+  first_added_at TIMESTAMPTZ DEFAULT now(),
+  last_updated_at TIMESTAMPTZ DEFAULT now(),
+  added_by TEXT DEFAULT 'discovery'
 );
 
 CREATE INDEX idx_city_users_rank ON public.city_users(city_rank ASC);
@@ -163,571 +212,808 @@ CREATE INDEX idx_city_users_activity ON public.city_users(recent_activity DESC);
 CREATE INDEX idx_city_users_lang ON public.city_users(top_language);
 ```
 
+**Key Fields:**
+- **login**: GitHub username, primary key, case-insensitive search via ILIKE
+- **total_score**: Computed formula (commits×3 + stars×2 + followers + repos×0.5 + activity×10)
+- **estimated_commits**: Heuristic from public_repos + followers
+- **recent_activity**: 0-100 scale based on activity
+- **top_repos**: JSONB array [{name, stars, forks, language, description, url}, ...]
+- **city_slot**: Permanent slot number (never reassigned)
+- **city_rank**: Position in sorted leaderboard (recalculated daily)
+
+**RLS Policies:** Public read (anon + authenticated), no write from public.
+
 ## 3.2 trending_repos Table
+
+**Trending repositories:** Top 20 weekly repos.
 
 ```sql
 CREATE TABLE public.trending_repos (
-  id TEXT PRIMARY KEY,  -- "{owner}/{repo}"
-  name TEXT,
-  owner TEXT,
-  url TEXT,
+  id SERIAL PRIMARY KEY,
+  repo_full_name TEXT NOT NULL UNIQUE,
+  owner_login TEXT NOT NULL,
+  owner_type TEXT NOT NULL DEFAULT 'User',
+  repo_name TEXT NOT NULL,
   description TEXT,
-  language TEXT,
-  stars INTEGER,
-  forks INTEGER,
-  this_week_stars INTEGER,  -- Stars earned in past 7 days
-  trending_rank INTEGER,    -- 1-20
-  week_of_date DATE,        -- Monday of the week
-  updated_at TIMESTAMPTZ,
-  
-  CONSTRAINT trending_rank_check CHECK (trending_rank >= 1 AND trending_rank <= 20)
+  primary_language TEXT DEFAULT 'Unknown',
+  total_stars INTEGER DEFAULT 0,
+  weekly_stars INTEGER DEFAULT 0,
+  forks INTEGER DEFAULT 0,
+  open_issues INTEGER DEFAULT 0,
+  watchers INTEGER DEFAULT 0,
+  github_url TEXT NOT NULL,
+  homepage_url TEXT,
+  topics TEXT[] DEFAULT '{}',
+  daily_stars JSONB DEFAULT '[]',
+  top_contributors JSONB DEFAULT '[]',
+  trending_rank INTEGER NOT NULL,
+  district_slot INTEGER NOT NULL,
+  building_height FLOAT DEFAULT 8,
+  building_width FLOAT DEFAULT 2,
+  last_refreshed TIMESTAMPTZ DEFAULT now(),
+  is_active BOOLEAN DEFAULT true
 );
 
-CREATE INDEX idx_trending_week ON public.trending_repos(week_of_date DESC);
-CREATE INDEX idx_trending_rank ON public.trending_repos(trending_rank ASC);
+CREATE UNIQUE INDEX idx_trending_rank ON public.trending_repos(trending_rank) WHERE is_active = true;
+CREATE INDEX idx_trending_active ON public.trending_repos(is_active, trending_rank);
 ```
+
+**Key Fields:**
+- **repo_full_name**: "owner/repo", unique key
+- **trending_rank**: 1-20 position
+- **weekly_stars**: Stars earned in past 7 days
+- **top_contributors**: JSONB [{login, avatarUrl, contributions, city_rank}, ...]
+- **daily_stars**: JSONB [{date, count}, ...] for last 7 days
+- **is_active**: Boolean, false = dropped off trending
+
+**RLS Policies:** Public read only.
 
 ## 3.3 sv_contributors Table
 
+**Silicon Valley Park contributor mapping.**
+
 ```sql
 CREATE TABLE public.sv_contributors (
-  id SERIAL PRIMARY KEY,
-  login TEXT (references city_users),
-  company TEXT,  -- "apple" | "google" | "nvidia" | "meta"
-  language TEXT,  -- null or "python" | "javascript" | ...
-  top_language TEXT,
-  stars INTEGER,
-  commits INTEGER,
-  github_rank INTEGER,
-  added_at TIMESTAMPTZ,
-  
-  -- Only top 40 per company, top N per language
-  CONSTRAINT company_check CHECK (company IN (''apple'', ''google'', ''nvidia'', ''meta''))
+  login TEXT PRIMARY KEY REFERENCES city_users(login) ON DELETE CASCADE,
+  company TEXT NOT NULL CHECK (company IN ('apple','google','nvidia','meta')),
+  contributions INTEGER DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_sv_company ON public.sv_contributors(company);
-CREATE INDEX idx_sv_language ON public.sv_contributors(language);
+CREATE INDEX idx_sv_contributors_company ON public.sv_contributors(company);
 ```
 
-## 3.4 Realtime Subscriptions
+**Key Fields:**
+- **login**: Foreign key to city_users
+- **company**: One of 4 tech companies
+- **contributions**: Commit count (heuristic or actual)
 
-Tables are published for realtime subscription at row level:
+## 3.4 sv_language_devs Table
 
+**Silicon Valley Park language district mapping.**
+
+```sql
+CREATE TABLE public.sv_language_devs (
+  login TEXT PRIMARY KEY REFERENCES city_users(login) ON DELETE CASCADE,
+  language TEXT NOT NULL,
+  contributions INTEGER DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_sv_language_devs_language ON public.sv_language_devs(language);
 ```
-city_users � all rows readable, writes only server
-trending_repos � all rows readable, writes only server  
-sv_contributors � all rows readable, writes only server
-```
+
+**Key Fields:**
+- **login**: Foreign key to city_users
+- **language**: Programming language name
+- **contributions**: Heuristic metric
+
+## 3.5 Views
+
+**sv_contributors_full**: Join cv_contributors + city_users (read API)
+**sv_language_devs_full**: Join sv_language_devs + city_users (read API)
 
 ---
 
-# 4. API ROUTES
+# 4. ZUSTAND STORES
 
-## 4.1 GET /api/github/[username]
+## 4.1 cityStore (lib/cityStore.ts)
 
-**Purpose:** Fetch a single GitHub user''s profile and calculate all metrics.
+**Central state management for app.**
 
-**Query Parameters:** `username` (GitHub login, case-insensitive)
-
-**Response:**
 ```typescript
-{
-  login: string
-  name: string
-  avatarUrl: string
-  bio: string
-  location: string
-  company: string
-  publicRepos: number
-  followers: number
-  following: number
-  totalStars: number  // sum of all repo stars
-  topLanguage: string // most common language
-  estimatedCommits: number // calculated from pushEvents
-  recentActivity: number // last 30 days activity score (0-100)
-  topRepos: [{
-    name: string
-    stars: number
-    forks: number
-    language: string
-    description: string
-    url: string
-  }]
-  citySlot?: number
-  cityRank?: number
-  totalScore?: number
-  addedAt?: string
+type ActiveMode = 'menu' | 'explore' | 'fly' | 'trending' | 'search' | 'leaderboard';
+
+interface CityStoreState {
+  // User data
+  users: Map<string, SlimUser>;
+  sortedLogins: string[];
+
+  // UI state
+  isNight: boolean;
+  isAirplaneMode: boolean;  // Legacy, may be deprecated
+  isRankChartOpen: boolean;
+  selectedUser: SlimUser | null;
+  activeMode: ActiveMode;
+  flyTarget: {x: number; y: number; z: number} | null;
+
+  // Loading state
+  isLoading: boolean;
+  loadingProgress: number;  // 0..1
+  loadingMessage: string;
+
+  // Intro stage
+  introStage: 'loading' | 'cinematic' | 'title' | 'buttons' | 'done';
+  introStartTime: number;    // ms timestamp
+  introProgress: number;     // 0..1
+  userInteracted: boolean;   // Disables auto-rotate
+
+  // Flight
+  flightMode: boolean;
+
+  // Actions
+  addUser(user: SlimUser): void;
+  addUsers(users: SlimUser[]): void;
+  updateUser(user: SlimUser): void;
+  selectUser(user: SlimUser | null): void;
+  toggleNight(): void;
+  toggleAirplaneMode(): void;
+  setRankChartOpen(open: boolean): void;
+  setLoading(loading: boolean): void;
+  setLoadingProgress(progress: number, message?: string): void;
+  setFlyTarget(target: {x: number; y: number; z: number} | null): void;
+  getUserByLogin(login: string): SlimUser | undefined;
+  getTopUsers(count: number): SlimUser[];
+  getRandomUser(): SlimUser | undefined;
+  setIntroStage(stage: ...): void;
+  setIntroStartTime(time: number): void;
+  setIntroProgress(progress: number): void;
+  setUserInteracted(): void;
+  setActiveMode(mode: ActiveMode): void;
+  setFlightMode(active: boolean): void;
 }
 ```
 
-**Implementation:**
-1. Fetch `/users/{username}` from GitHub API
-2. Fetch `/users/{username}/repos?per_page=100&sort=stars` (all repos)
-3. Fetch `/users/{username}/events/public?per_page=100` (recent activity)
-4. Calculate: totalStars = sum(repo.stars), topLanguage = mode of repo languages
-5. Calculate: estimatedCommits = repos.length � 30 + pushEvents � 15
-6. Calculate: recentActivity = (events in 30 days / max possible) � 100
-7. If in database, return city data; otherwise return null for citySlot/Rank/Score
+**Key Implementation Details:**
+- `users` Map capped at 10,000 (enforced in `addUsers()` action)
+- `addUser()` buffers in `pendingBuffer`, flushed every 2000ms (BATCH_MS)
+- `sortedLogins` computed from `users` Map (sorted by totalScore DESC)
+- During loading, sorted list not recomputed (expensive operation deferred until `setLoading(false)`)
+- `selectUser()` calculates `flyTarget` position using `slotToWorld()` + `getBuildingDimensions()`
 
----
+## 4.2 trendingStore (lib/trendingStore.ts)
 
-## 4.2 GET /api/github/stream
+**Trending repos state.**
 
-**Purpose:** Real-time SSE stream of continuously discovered GitHub developers.
-
-**Query Parameters:** None
-
-**Response Format:** Server-Sent Events (text/event-stream)
-
-```
-event: user
-data: {"login":"username","name":"Full Name",...}
-
-event: user
-data: {"login":"username2",...}
-```
-
-**Implementation:**
-1. Run 30 discovery queries in parallel (followers brackets, languages, recently active)
-2. Deduplicate results
-3. For each user not in database, fetch full profile (parallel)
-4. Write Supabase via `/api/city/add` (atomically assigns slot)
-5. SSE-send the user data to client
-6. Client receives and immediately renders new building
-
----
-
-## 4.3 POST /api/city/add
-
-**Purpose:** Add or update a developer in the city (atomic slot assignment).
-
-**Body:**
 ```typescript
+interface TrendingRepo {
+  id: number;
+  repo_full_name: string;
+  owner_login: string;
+  owner_type: string;
+  repo_name: string;
+  description: string;
+  primary_language: string;
+  total_stars: number;
+  weekly_stars: number;
+  forks: number;
+  open_issues: number;
+  watchers: number;
+  github_url: string;
+  homepage_url?: string;
+  topics: string[];
+  daily_stars: {date: string; count: number}[];
+  top_contributors: {login: string; avatarUrl: string; contributions: number; city_rank: number}[];
+  trending_rank: number; // 1-20
+  district_slot: number;
+  building_height: number;
+  building_width: number;
+  last_refreshed: string; // datetime
+  is_active: boolean;
+}
+
+interface TrendingStoreState {
+  trendingRepos: TrendingRepo[];
+  selectedRepo: TrendingRepo | null;
+  repoPanelOpen: boolean;
+
+  setTrendingRepos(repos: TrendingRepo[]): void;
+  selectRepo(repo: TrendingRepo | null): void;
+  closeRepoPanel(): void;
+}
+```
+
+**Usage:**
+- Fetched from `/api/trending` GET (cached 3600s server-side, 1800s stale-while-revalidate)
+- Updated weekly Monday UTC via `/api/trending/refresh` cron
+
+---
+
+# 5. API ROUTES
+
+## 5.1 /api/github/stream (GET, SSE)
+
+**Server-Sent Events discovery stream. Finds new devs via 28 parallel GitHub API searches.**
+
+**Duration:** 5 minutes (STREAM_MAX_MS = 5×60×1000)
+
+**Search Queries (28 total):**
+- Followers brackets: >100k, 50k-100k, 20k-50k, 10k-20k, 5k-10k, 2k-5k, 1k-2k, 500-1k, 200-500, 100-200
+- Languages: JavaScript, TypeScript, Python, Rust, Go, Ruby, Java, C++, C#, Swift, Kotlin, PHP, Shell, HTML, Vue, Dart
+- Activity: repos>200, repos>100, recent pushes, rising stars
+
+**Per User Found:**
+1. GET `/users/{login}` (profile)
+2. GET `/users/{login}/repos` (top repos)
+3. GET `/users/{login}/events/public` (recent activity)
+4. Compute: totalScore, topLanguage, topRepos, estimatedCommits
+5. POST `/api/city/add` (upsert into city_users)
+6. Emit SSE: `data: {user JSON}\n\n`
+
+**Token Rotation:** 3 PATs, cycle through, respect Rate-Limit headers
+
+## 5.2 /api/github/[username] (GET)
+
+**Single user profile endpoint. Callable from SearchBar.**
+
+**Response:**
+```json
 {
-  login: string
-  // ...all user profile fields...
+  "login": "ashusriwastav07",
+  "name": "Ashus Riwastav",
+  "avatarUrl": "https://...",
+  "bio": "...",
+  "location": "...",
+  "company": "...",
+  "publicRepos": 42,
+  "followers": 1234,
+  "following": 56,
+  "totalStars": 5678,
+  "totalForks": 89,
+  "topLanguage": "TypeScript",
+  "estimatedCommits": 12345,
+  "recentActivity": 75,
+  "totalScore": 67890.5,
+  "topRepos": [{name, stars, forks, language, description, url}, ...]
+}
+```
+
+**Rate Limiting:** Token rotation, 5000 req/hr per token
+
+## 5.3 /api/city/add (POST)
+
+**Add or update user in city_users. Called by SearchBar or discovery stream.**
+
+**Request Body:**
+```json
+{
+  "login": "username",
+  "name": "Full Name",
+  "avatarUrl": "https://...",
+  ... (all CityUser fields),
+  "addedBy": "search" | "discovery"
 }
 ```
 
 **Response:**
-```typescript
+```json
 {
-  success: boolean
-  citySlot: number  // newly assigned or existing
-  cityRank: number
-  message: string
-}
-```
-
-**Implementation:**
-1. Check if user exists in database
-2. If exists: UPDATE stats, return existing citySlot
-3. If new: 
-   - Call Supabase RPC `claim_next_slot()` (atomicallygetsNext slot)
-   - INSERT user with assigned slot
-   - TRIGGER `recalculate_ranks()` RPC to re-sort all users
-4. Return response
-
----
-
-## 4.4 GET /api/city/users
-
-**Purpose:** Paginated list of all developers in city (for realtime subscriptions or browsing).
-
-**Query Parameters:**
-- `limit` (default 100, max 500)
-- `offset` (default 0)
-- `sortBy` (default "rank") � "rank" | "score" | "activity"
-
-**Response:**
-```typescript
-{
-  users: SlimUser[]  // returned based on sorting
-  total: number      // total users in city
-  page: number
-  pageSize: number
-}
-```
-
----
-
-## 4.5 GET /api/silicon-valley/contributors
-
-**Purpose:** Fetch all SV park contributor data (companies and languages).
-
-**Response:**
-```typescript
-{
-  companies: {
-    apple: [{login, avatarUrl, topLanguage, stars, commits}],
-    google: [...],
-    nvidia: [...],
-    meta: [...]
-  },
-  languages: {
-    python: [{...}],
-    javascript: [{...}],
-    ... (8 language districts)
+  "user": {
+    "login": "username",
+    "citySlot": 42,
+    "cityRank": 1234,
+    ... (SlimUser fields)
   }
 }
 ```
 
----
+**Process:**
+1. Upsert into city_users (INSERT ON CONFLICT UPDATE)
+2. Calculate citySlot if new (next available spiral slot)
+3. Calculate cityRank via `recalculateRanks()` (expensive, deferred to cron)
+4. Return SlimUser for immediate rendering
 
-## 4.6 GET /api/trending
+## 5.4 /api/silicon-valley/contributors (GET)
 
-**Purpose:** Fetch current week''s top 20 trending repos.
+**SV park contributors (companies + languages).**
 
 **Response:**
-```typescript
+```json
 {
-  repos: [{
-    id: string
-    name: string
-    owner: string
-    language: string
-    stars: number
-    thisWeekStars: number
-    description: string
-    trendingRank: number  // 1-20
-  }],
-  weekOf: string  // ISO date of Monday
+  "companies": {
+    "apple": [{login, avatarUrl, topLanguage, citySlot, cityRank, totalScore, ...}, ...],
+    "google": [...],
+    "nvidia": [...],
+    "meta": [...]
+  },
+  "languages": {
+    "python": [{...}, ...],
+    "javascript": [...],
+    ... (8 languages)
+  }
 }
 ```
 
+**Caching:** Cached in-memory or Supabase view query
+
+## 5.5 /api/silicon-valley/refresh (POST)
+
+**Refresh SV park data (company + language contributor lists).**
+
+**Trigger:** Daily cron job (19:30 UTC)
+
+**Process:**
+1. Query GitHub for each company's top open-source contributors
+2. Fetch their profiles, compute stats
+3. Upsert into sv_contributors table
+4. Query city_users by top_language, upsert into sv_language_devs
+5. Return {updatedCompanies, updatedLanguages, timestamp}
+
+## 5.6 /api/trending (GET)
+
+**Active trending repos (top 20, cached).**
+
+**Response:**
+```json
+{
+  "repos": [
+    {
+      "id": 1,
+      "repo_full_name": "vercel/next.js",
+      "trending_rank": 1,
+      "primary_language": "TypeScript",
+      "weekly_stars": 500,
+      "building_height": 72,
+      ... (all TrendingRepo fields)
+    },
+    ... (20 repos)
+  ]
+}
+```
+
+**Caching:** 3600s server-side cache, 1800s stale-while-revalidate
+
+## 5.7 /api/trending/refresh (POST)
+
+**Refresh trending repos list.**
+
+**Trigger:** Weekly Monday UTC, or manually by admin
+
+**6-Phase Process:**
+1. Search GitHub for repos created <30 days, stars>50, not fork/archived
+2. Filter: Has description, not spam names (test, demo, example, etc.)
+3. Fetch contributors, weekly commit activity
+4. Top 20 by weekly stars gain
+5. Calculate building_height via RANK_HEIGHTS array
+6. Upsert into trending_repos, mark old repos is_active=false
+
+**Response:** {phase1Results, phase2Results, ..., success, timestamp}
+
+## 5.8 /api/cron/recalculate-ranks (GET)
+
+**Recalculate city_rank for all users.**
+
+**Trigger:** Daily 19:45 UTC
+
+**Process:**
+1. SELECT * FROM city_users (all users)
+2. Sort by total_score DESC
+3. UPDATE city_rank = position for each user
+4. Return {success, updatedCount, averageRank, runtime_seconds}
+
+**Duration:** 10-30s depending on city size
+
+## 5.9 /api/daily-refresh (GET)
+
+**Combined cron endpoint (SV refresh + Trending refresh + Rank recalc).**
+
+**Trigger:** Daily 19:30 UTC (main endpoint)
+
+**Process:**
+1. Call /api/silicon-valley/refresh
+2. Call /api/trending/refresh
+3. Call /api/cron/recalculate-ranks
+4. Return {results: {svRefresh, trendingRefresh, rankRecalc}, success}
+
 ---
 
-# 5. FRONT-END STATE MANAGEMENT (Zustand)
+# 6. AUTHENTICATION & AUTHORIZATION
 
-## 5.1 cityStore.ts
+**No user authentication required.** App is public, anonymous access via Supabase.
 
+**Row-Level Security (RLS):**
+- city_users: Public read (SELECT * allowed for anon), no public write
+- trending_repos: Public read only
+- sv_contributors: Public read only
+- sv_language_devs: Public read only
+
+**GitHub API:**
+- Token rotation (3 PATs, cycling)
+- No specific user association (stateless, read-only)
+
+---
+
+# 7. CLIENT STATE MANAGEMENT (Zustand)
+
+## Data Flow:
+
+```
+page.tsx (entry point)
+  ↓
+loadSlimCity() [Supabase query, batched]
+  ↓
+addUsers() [buffered, flushed every 2s]
+  ↓
+useCityStore.users Map [capped 10K]
+  ↓
+CityGrid / Building components [render via InstancedMesh]
+```
+
+## Real-Time Updates:
+
+```
+subscribeToNewUsers() [Supabase realtime]
+  ↓
+onInsert event [user inserted in Supabase]
+  ↓
+addUser() callback [buffered]
+  ↓
+CityGrid re-renders [new building appears]
+```
+
+## Batching:
+
+- `addUser()` pushes SlimUser to `pendingBuffer`
+- `flushTimer` set if not already pending
+- After 2000ms: `flushPending()` → `addUsers(batch)` → Zustand setState
+- Batching reduces rendered updates, improves performance
+
+---
+
+# 8. 3D RENDERING (Three.js, React Three Fiber)
+
+## Scene Structure (CityScene.tsx)
+
+```
+Canvas
+├── Lights
+│   ├── ambientLight (day: white 1.1, night: blue 0.8)
+│   ├── directionalLight (day: warm 3.0, night: cool 1.8)
+│   └── pointLights (streets, campuses)
+├── Sky
+│   ├── Sky component (day) [sunny, warm]
+│   └── Stars + fog (night) [1500 stars, navy background]
+├── CityGrid [InstancedMesh for all buildings]
+├── TechPark
+├── SiliconValleyPark
+├── TrendingDistrict
+├── AirplaneMode (if flightMode=true)
+├── GodRaySpotlight [selected building glow]
+└── CameraController [orbital or flight]
+```
+
+## InstancedMesh (CityGrid.tsx)
+
+**Main renderinmg approach for 5,000+ buildings.**
+
+**Benefits:**
+- Single draw call for all buildings
+- GPU instancing (massive performance gain)
+- One material, multiple transforms
+
+**Constraints:**
+- Must use same geometry for all instances
+- Transforms applied via `updateMatrix()` per frame
+- MAX_BUILDINGS = 8000 (buffer capacity)
+- If >8000 loaders, some omitted from render (fallback)
+
+**Implementation:**
 ```typescript
-interface SlimUser {
-  login: string
-  name: string
-  avatarUrl: string
-  topLanguage: string
-  publicRepos: number
-  followers: number
-  totalStars: number
-  estimatedCommits: number
-  recentActivity: number
-  citySlot: number
-  cityRank: number
-  totalScore: number
-  addedAt: string
-  bio?: string
-  location?: string
-  tompRepos?: Repo[]
-}
+const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
 
-interface CityStore {
-  // User data
-  users: Map<string, SlimUser>
-  setUsers: (users: SlimUser[]) => void
-  addUser: (user: SlimUser) => void
-  updateUser: (user: SlimUser) => void
-  
-  // City state
-  isNight: boolean
-  toggleIsNight: () => void
-  activeMode: ActiveMode
-  setActiveMode: (mode: ActiveMode) => void
-  flightMode: boolean
-  setFlightMode: (on: boolean) => void
-  
-  // UI state
- selectedBuilding?: string  // username
-  setSelectedBuilding: (login?: string) => void
-  rankChartOpen: boolean
-  setRankChartOpen: (open: boolean) => void
-  
-  // Realtime subscriptions
-  subscribeToUsers: () => void
-  unsubscribeFromUsers: () => void
-}
-
-type ActiveMode = "menu" | "explore" | "fly" | "trending" | "search" | "leaderboard"
-```
-
----
-
-# 6. COMPONENT STRUCTURE
-
-## 6.1 Core Components
-
-```
-app/
-  page.tsx � Main page, initializes stores, boots intro
-  layout.tsx � Root layout with metadata
-
-components/
-  city/
-    CityScene.tsx � R3F Canvas wrapper, lighting, sky
-    CityGrid.tsx � InstancedMesh rendering (main city)
-    CameraController.tsx � Orbit + WASD + cinematic camera
-    TechPark.tsx � Park area with 60 characters
-    SiliconValleyPark.tsx � 4 company campuses + 8 languages
-    TrendingDistrict.tsx � Top 20 trending repos as buildings
+useFrame(() => {
+  for (let i = 0; i < userCount; i++) {
+    const user = users[i];
+    const pos = slotToWorld(user.citySlot);
+    const dims = getBuildingDimensions(user.cityRank, user.citySlot, user);
     
-    airplane/
-      AirplaneMode.tsx � Flyable 3D plane with controls
-      FlightCamera.ts � 3rd-person follow camera logic
+    position.set(pos.x, dims.height / 2, pos.z);
+    quaternion.identity();
+    scale.set(dims.width, dims.height, dims.depth);
+    const m = new Matrix4().compose(position, quaternion, scale);
     
-    svpark/
-      AppleQuadrant.tsx, GoogleQuadrant.tsx, etc.
-      LanguageDistrict.tsx
-      BurjKhalifaTower.tsx
-      FlyingBanners.tsx
-  
-  ui/
-    ModeMenu.tsx � 5-way mode selection after intro
-    SearchBar.tsx � GitHub username search
-    ProfileModal.tsx � Developer profile details
-    RankChart.tsx � Top 100 leaderboard
-    MiniMap.tsx � 180�180 overhead canvas map
-    TopFiveWidget.tsx � Mini leaderboard (top 5)
-    LiveFeed.tsx � Scrolling event ticker
-    HUD.tsx � Top bar, buttons, layout assembly
-    IntroOverlay.tsx � Cinematic intro sequence
-  
-  city/
-    GodRaySpotlight.tsx � Blue neon spotlight effect
-
-lib/
-  cityStore.ts � Zustand store (state management)
-  cityLayout.ts � Grid calculations, slot-to-position
-  supabaseDb.ts � Supabase queries and realtime setup
-  supabase.ts � Supabase client initialization
-  textureGenerator.ts � Canvas texture generation + LANGUAGE_COLORS
-  githubTokens.ts � Token rotation logic
-  cityStream.ts � SSE stream connection
-  trendingStore.ts � Zustand store for trending repos
+    instancedMeshRef.current.setMatrixAt(i, m);
+  }
+  instancedMeshRef.current.instanceMatrix.needsUpdate = true;
+});
 ```
 
----
+## Textures (textureGenerator.ts)
 
-# 7. PERFORMANCE OPTIMIZATION
+**Window texture generation (per-building).**
 
-## 7.1 InstancedMesh Rendering
+**Canvas:** 32×32 pixels
+**Content:** Grid of 6×6 windows
+**Colors:**
+- Lit windows: 45% language-colored, 55% random accent palette
+- Unlit windows: Colored darkness (accent at 15-25% opacity)
+- Accent palette: 24 vibrant colors (red, green, yellow, pink, cyan, etc.)
 
-All 5000+ building bodies use a single InstancedMesh:
-- One BufferGeometry (simple box)
-- 5000+ instances with unique transformation matrices
-- One material (repeated for all instances)
-- **Result: 2 GPU draw calls total** (body + glow/emissive)
+**Dynamic Properties:**
+- **litRatio**: Varies by night (92-94%) vs day (82-85%)
+- **Increase by**: totalStars/3000 × 6%, recentActivity/100 × 8%
+- **Unlit window tint**: Random accent color from ACCENT_POOL
 
-Each instance stores position, scale, rotation, and color via instanceColor attribute.
+**Caching Key:** `{langColor}_{starBucket}_{activityBucket}_{isNight}`
+- Star buckets: 0-8 (every 500 stars)
+- Activity buckets: 0-5 (every 20 activity points)
+- Max 8×5×2 = 80 unique cached textures per language
 
-## 7.2 Texture Generation
-
-Building textures created once via canvas (150ms), cached in memory:
-- 256�256 canvas, drawn once per building''s first render
-- NearestFilter applied for pixelated look
-- Reused across multiple building instances where properties are identical
-
-## 7.3 Memory Allocation
-
-Pre-allocated reusable objects at module scope (zero GC pressure in render loop):
-- Vector3 objects for camera movement (WASD)
-- Quaternion objects for rotation
-- Euler objects for orientation
-- Matrix4 objects for transformations used per frame
-- All object pools reset with `.copy()` or `.set()` instead of `new`
-
-## 7.4 Canvas & Texture Optimization
-
-- Use `LinearFilter` for distant buildings, `NearestFilter` for close-ups  
-- One neutral window texture tinted per-building via `instanceColor` (not per-texture)
-- Grass/noise generated once on startup, shared across all ground planes
-- Avatar images fetched from Supabase CDN with aggressive caching headers
-
-## 7.5 Culling & LOD
-
-- Frustum culling handled by Three.js (disabled on InstancedMesh, it handles internally)
-- LOD: nearby buildings detailed geometry, distant buildings simplified
-- Airplane and park characters use simplified geometry when far away
-- Trending buildings deactivated if outside screen bounds
+**Material:**
+- MeshLambertMaterial (diffuse shading)
+- magFilter/minFilter: NearestFilter (pixel art aesthetic)
+- Emissive: language-colored (night only, intensity 0.2)
+- Emissive: black (day, intensity 0)
 
 ---
 
-# 8. REALTIME ARCHITECTURE
+# 9. CITY LAYOUT & BUILDING DIMENSIONS
 
-## 8.1 Supabase Realtime Subscriptions
+## Spiral Grid System (lib/cityLayout.ts)
 
-Client-side subscription setup:
+**Slot Mapping:**
 
 ```typescript
-const channel = supabase
-  .channel('city_users_changes')
-  .on(
-    'postgres_changes',
-    { event: '*', schema: 'public', table: 'city_users' },
-    (payload) => {
-      if (payload.eventType === 'INSERT') {
-        // New user added � render building, update count
-      } else if (payload.eventType === 'UPDATE') {
-        // User stats updated � update building appearance, rank
-      }
-    }
-  )
-  .subscribe()
+function spiralCoords(slot: number): [number, number] {
+  // Ulam spiral: starting from center, spiraling outward
+  // slot 0 → (0, 0)
+  // slot 1 → (1, 0)
+  // slot 2 → (1, 1)
+  // ... spiraling in square rings
+}
+
+function slotToWorld(slot: number): {x: number; z: number} {
+  // 1. Get spiral grid coordinates
+  const [gx, gz] = spiralCoords(slot);
+  // 2. Scale by SLOT_PITCH = 5.0
+  const wx = gx * SLOT_PITCH;
+  const wz = gz * SLOT_PITCH;
+  // 3. Check if inside park, skip if needed
+  if (!isInsidePark(wx, wz)) {
+    return {x: wx, z: wz};
+  }
+  // 4. Return next valid position (cached spiral iterator)
+}
 ```
 
-## 8.2 SSE Discovery Stream
+**Park-Aware Positioning:**
+- _validWorldPos cache: array of positions outside parks
+- _validPosProbe iterator: scans spiral until N valid positions found
+- Ensures buildings never render inside Tech Park or SV Park zones
 
-Client-side, running on app mount:
+**Constants:**
+- SLOT_PITCH = 5.0 (spacing between slots in world units)
+- BUILDING_SIZE = 3.0 (base footprint scale)
+- GAP = 2.0 (space between adjacent buildings)
+- GRID_SIZE = 145 (max grid dimension)
+
+## Building Dimensions Formula
 
 ```typescript
-const eventSource = new EventSource('/api/github/stream')
-eventSource.addEventListener('user', (event) => {
-  const user = JSON.parse(event.data)
-  // Add to Zustand store, building appears
-})
+function getBuildingDimensions(
+  rank: number,
+  slot: number,
+  user: {estimatedCommits, publicRepos, totalStars}
+) {
+  // Deterministic randomness per slot
+  const r1 = sr(slot × 7 + 1);  // repeatable "random" values
+  const r2 = sr(slot × 13 + 2);
+  const r3 = sr(slot × 17 + 3);
+
+  // Commit factor (logarithmic scale)
+  const commits = user.estimatedCommits || 100;
+  const logFactor = Math.log10(Math.max(commits, 10)) / Math.log10(50000);
+  
+  if (rank === 1) {
+    // Rank #1 special: always tall with crown
+    return {height: 78, width: 2.4, depth: 2.4, tier: 1};
+  } else if (rank <= 10) {
+    // Tier 2: towers with setbacks
+    height = Math.round(38 + r1 × 18 + logFactor × 5);
+    width = 1.7 + r2 × 0.7;
+    depth = 1.6 + r3 × 0.7;
+    return {height, width, depth, tier: 2};
+  } else if (rank <= 200) {
+    // Tier 3: tall buildings
+    height = Math.round(14 + r1 × 16 + logFactor × 6);
+    ... (similar pattern)
+  } else if (rank <= 5000) {
+    // Tier 4: medium buildings
+    ... (similar)
+  } else {
+    // Tier 5: tiny filler buildings
+    height = Math.round(2 + r1 × 3);
+    ... (minimal variation)
+  }
+}
+
+// Deterministic pseudo-random function
+function sr(seed: number): number {
+  let h = (seed × 2654435761) >>> 0;  // FNV-1a hash constants
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 0xffffffff;  // normalized to [0, 1)
+}
 ```
 
----
-
-# 9. CACHING STRATEGY
-
-## 9.1 Avatar Images
-
-- CDN URL: Supabase Storage or direct GitHub URL
-- Cache header: `max-age=86400` (24 hours)
-- Fallback: Generic placeholder if image 404s
-
-## 9.2 API Responses
-
-- GitHub API results cached in-memory for 5 minutes
-- Supabase query results cached in Zustand (in-memory)
-- Building textures cached after first generation
-
-## 9.3 Browser Cache
-
-- Service Worker caches CSS, JS bundles (with version hash)
-- Assets fingerprinted via Next.js built-in optimization
+**Key Points:**
+- Width increases with publicRepos (0.7-2.5 clamped)
+- Depth increases with publicRepos/followers ratio
+- Height increases with estimatedCommits (logarithmic)
+- Randomness per slot ensures visual variety even for same rank
+- Tier 1 always 78u, serves as visual anchor
+- Randomness is deterministic (same slot always produces same building)
 
 ---
 
-# 10. ERROR HANDLING
+# 10. PERFORMANCE OPTIMIZATIONS
 
-## 10.1 Network Errors
+## Memory Management
 
-- **GitHub API unreachable**: Show cached data if available; fallback to "GitHub unavailable" message
-- **Supabase unreachable**: Show existing local data; disable new searches
-- **SSE stream drops**: Auto-reconnect every 5 seconds with exponential backoff
-- **Search fails**: Show red border on search bar, retry on next input
+**Zustand Store Capping:**
+- Hard limit: 10,000 users in `users` Map
+- When exceeded, lowest-scoring 7,000 removed (keep top 10K)
+- Enforced in `addUsers()` action
 
-## 10.2 Data Validation
+**Batching:**
+- `addUser()` calls buffered for 2000ms
+- Reduces Zustand listeners triggered per update
+- Single `setState()` call instead of many
 
-- All Supabase responses validated against TypeScript interfaces
-- GitHub API responses checked for required fields
-- Invalid geometry dimensions logged but don''t crash
-- Component error boundaries catch React errors
+**Texture Caching:**
+-  Textures cached by stats bucket, not per-developer
+- Reused across buildings with same star/activity range
+- Reduces GPU texture memory
+
+## Rendering Optimizations
+
+**InstancedMesh:**
+- Single draw call for 5,000+ buildings
+- ~2 GPU calls total (buildings + glow in separate passes)
+- vs. default: 5,000+ draw calls (massive perf win)
+
+**AdaptiveDpr:**
+- Scales render resolution on mobile (devicePixelRatio adaptation)
+- Maintains 60fps on lower-end tablets/phones
+
+**Pixel Aesthetic:**
+- CanvasTextures use NearestFilter (no subpixel blending)
+- Lower texture memory, crisper appearance
+- Reduces shader complexity
+
+**OrbitControls:**
+- Damping (0.02) for smooth inertia
+- Auto-rotate disabled on user interaction
+- Prevents unnecessary frame updates
+
+**useFrame Ref State:**
+- Airplane physics uses refs (not React state)
+- Zero GC pressure during 60fps render loop
+- Pre-allocated Vector3/Quaternion/Euler objects (reused every frame)
 
 ---
 
-# 11. DEPLOYMENT & OPERATIONS
+# 11. ENVIRONMENT VARIABLES
 
-## 11.1 Next.js Build
-
-```bash
-npm run build  # Next.js compilation + optimization
-npm run start  # Production server
-npm run dev    # Development with Turbopack
-```
-
-## 11.2 Environment Variables
+**.env.local (git-ignored, not in repo):**
 
 ```
 # Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=****
+NEXT_PUBLIC_SUPABASE_URL=https://...supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 
-# GitHub API
-GITHUB_TOKENS=ghp_token1,ghp_token2,ghp_token3
+# GitHub API (3 PATs for token rotation)
+GITHUB_TOKEN_1=ghp_...
+GITHUB_TOKEN_2=ghp_...
+GITHUB_TOKEN_3=ghp_...
 
-# App
-NEXT_PUBLIC_APP_URL=https://gitworld.app
+# Vercel Cron (secret bearer token)
+CRON_SECRET=your-secret-token-here
+
+# Optional: Analytics, logging
+NEXT_PUBLIC_GA_ID=G_...
 ```
 
-## 11.3 Database Maintenance
+**Used In:**
+- /lib/supabase.ts: SUPABASE_URL, SUPABASE_ANON_KEY
+- /lib/githubTokens.ts: GITHUB_TOKEN_1/2/3
+- /app/api/daily-refresh/route.ts: CRON_SECRET
 
-**Nightly (via Supabase Edge Function cron):**
-```sql
--- Recalculate all ranks based on current total_score
-SELECT recalculate_ranks();
+---
 
--- Archive old trending_repos (keep 52 weeks only)
-DELETE FROM trending_repos 
-WHERE week_of_date < NOW() - INTERVAL ''52 weeks'';
+# 12. DEPLOYMENT & CRON JOBS
+
+## Vercel Configuration (vercel.json)
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/daily-refresh",
+      "schedule": "30 19 * * *"
+    },
+    {
+      "path": "/api/cron/sv-refresh",
+      "schedule": "30 19 * * *"
+    },
+    {
+      "path": "/api/cron/recalculate-ranks",
+      "schedule": "45 19 * * *"
+    }
+  ]
+}
 ```
 
-**Weekly (manual or scheduled):**
-- Refresh top 40 SV contributors per company
-- Refresh top N per language
-- Refresh top 20 trending repos (runs hourly actually)
+**Cron Jobs:**
+
+| Job | Schedule | Duration | Purpose |
+|-----|----------|----------|---------|
+| /api/daily-refresh | 19:30 UTC | 30-60s | Combined: SV refresh + trending + ranks |
+| /api/cron/sv-refresh | 19:30 UTC (alt) | 15-30s | Refresh SV park contributors |
+| /api/cron/recalculate-ranks | 19:45 UTC | 10-30s | Recalc leaderboard positions |
+
+**Auth:** Bearer {CRON_SECRET} token required (checked in route handlers)
 
 ---
 
-# 12. SECURITY
+# 13. BUILD & RUN COMMANDS
 
-## 12.1 Supabase RLS (Row-Level Security)
+```bash
+# Install dependencies
+npm install
 
-```sql
--- Only server can write; all can read
-CREATE POLICY "city_users_read" ON public.city_users
-  FOR SELECT USING (true);
+# Development server (hot reload)
+npm run dev
+# Runs on http://localhost:3000
 
-CREATE POLICY "city_users_write" ON public.city_users
-  FOR INSERT, UPDATE USING (false);  -- disabled for client
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Linting
+npm run lint
 ```
 
-## 12.2 GitHub API
+---
 
-- PATs stored server-side in env vars, never exposed to client
-- Tokens rotated on every call to balance rate limit usage
-- No sensitive scopes requested (public_repo only)
+# 14. KNOWN LIMITATIONS & TECHNICAL DEBT
 
-## 12.3 CORS & CSP
+### Not Implemented:
+- Tech Park animated characters (stub component only)
+- Sound/audio (all placeholders)
+- Mobile touch controls (keyboard only)
+- Service worker / offline mode
+- User authentication / custom profiles
+- Comment system on developers
+- Achievements / badges
+- Private city instances
+- API input validation / error handling
 
-- Next.js handles CORS for own API routes
-- Supabase CORS configured to allow `gitworld.app` domain
-- Content-Security-Policy header set to restrict external script loads
+### Technical Debt:
+- Magic numbers hardcoded throughout (SLOT_PITCH, MAX_BUILDINGS, PITCH_RATE)
+- Minimal error boundaries (SceneErrorBoundary for 3D only, no root boundary)
+- No logging/telemetry (difficult to debug production issues)
+- Building dimensions formula is empirical, not data-driven
+- GitHub token rotation not battle-tested at production scale
+- No automated tests (unit, integration, E2E)
+- Zustand store mutations could be cleaner (overlapping logic)
+- Supabase schema lacks some indexes (e.g., ON city_users(added_by))
+- TypeScript types could be stricter in some places
+- No rate-limiting on client-side API calls
 
 ---
 
-# 13. MONITORING & ANALYTICS (Optional)
-
-## 13.1 Metrics to Track
-
-- **Realtime developer count**: broadcast via live_update every 5 minutes
-- **API response times**: log to Supabase via edge function
-- **Build times**: logged in CI/CD pipeline
-- **Client errors**: Sentry integration (optional)
-- **User engagement**: Google Analytics events (optional)
-
----
-
-# 14. TESTING STRATEGY
-
-## 14.1 Unit Tests
-
-- cityStore.ts actions (Vitest)
-- Layout calculations (Vitest)
-- Texture generation (Vitest)
-
-## 14.2 Integration Tests
-
-- API routes (Supabase sandbox environment)
-- Realtime subscription (local Supabase)
-
-## 14.3 E2E Tests
-
-- User journey: search ? load profile ? fly ? run
-- Discovery stream delivers buildings
-- Rank changes update building height
-
----
-
-END OF TECHNICAL REQUIREMENTS DOCUMENT (TRD)
+**END OF TRD v3.0 (Code-Accurate)**
