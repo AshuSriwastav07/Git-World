@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Press_Start_2P, Space_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const pixelFont = Press_Start_2P({
@@ -48,7 +49,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${pixelFont.variable} ${monoFont.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
