@@ -76,14 +76,14 @@ export function AirplaneMode() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (k in keys.current) (keys.current as Record<string, boolean>)[k] = true;
+      if (k in keys.current) (keys.current as unknown as Record<string, boolean>)[k] = true;
       if (k === 'escape' && !exitingRef.current) {
         exitingRef.current = true;
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (k in keys.current) (keys.current as Record<string, boolean>)[k] = false;
+      if (k in keys.current) (keys.current as unknown as Record<string, boolean>)[k] = false;
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
