@@ -370,6 +370,7 @@ export function CityGrid() {
   /* ── Rise animation during cinematic intro ── */
   const RISE_DURATION = 7000; // 7 seconds for all buildings to rise
   const MAX_DIST_DELAY = 0.6;  // fraction of rise time used for distance-based delay
+  const riseDummy = useMemo(() => new THREE.Object3D(), []);
 
   useFrame(() => {
     if (introStage !== 'cinematic' && introStage !== 'loading') return;
@@ -390,7 +391,6 @@ export function CityGrid() {
       if (buildingData.current[i].dist > maxDist) maxDist = buildingData.current[i].dist;
     }
 
-    const dummy = new THREE.Object3D();
     let anyChanged = false;
 
     for (let i = 0; i < count; i++) {
@@ -405,14 +405,14 @@ export function CityGrid() {
       const currentHeight = bd.height * eased;
 
       if (currentHeight > 0.02) {
-        dummy.position.set(bd.pos.x, currentHeight / 2, bd.pos.z);
-        dummy.scale.set(bd.width, currentHeight, bd.depth);
-        dummy.updateMatrix();
-        body.setMatrixAt(i, dummy.matrix);
+        riseDummy.position.set(bd.pos.x, currentHeight / 2, bd.pos.z);
+        riseDummy.scale.set(bd.width, currentHeight, bd.depth);
+        riseDummy.updateMatrix();
+        body.setMatrixAt(i, riseDummy.matrix);
 
-        dummy.scale.set(bd.width + 0.35, currentHeight + 0.1, bd.depth + 0.35);
-        dummy.updateMatrix();
-        glow.setMatrixAt(i, dummy.matrix);
+        riseDummy.scale.set(bd.width + 0.35, currentHeight + 0.1, bd.depth + 0.35);
+        riseDummy.updateMatrix();
+        glow.setMatrixAt(i, riseDummy.matrix);
         anyChanged = true;
       }
     }

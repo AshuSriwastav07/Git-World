@@ -7,16 +7,15 @@ import { Suspense, useRef, useCallback } from 'react';
 import { useCityStore } from '@/lib/cityStore';
 import { CityGrid } from './CityGrid';
 import { TechPark } from './TechPark';
-import { Airplane } from './Airplane';
+import { AirplaneMode } from './airplane/AirplaneMode';
 import CameraController from './CameraController';
 import GodRaySpotlight from './GodRaySpotlight';
-import FireworkSystem from './FireworkSystem';
 import { SiliconValleyPark } from './SiliconValleyPark';
 import { TrendingDistrict } from './TrendingDistrict';
 import { SceneErrorBoundary } from './SceneErrorBoundary';
 
 function SceneContent() {
-  const isAirplaneMode = useCityStore((s) => s.isAirplaneMode);
+  const flightMode = useCityStore((s) => s.flightMode);
   const isNight = useCityStore((s) => s.isNight);
 
   return (
@@ -72,13 +71,10 @@ function SceneContent() {
       </SceneErrorBoundary>
 
       {/* Airplane */}
-      {isAirplaneMode && <Airplane />}
+      {flightMode && <AirplaneMode />}
 
       {/* Spotlight on selected building */}
       <GodRaySpotlight />
-
-      {/* Firework particle bursts */}
-      <FireworkSystem />
 
       {/* Camera controller */}
       <CameraController />

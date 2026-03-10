@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Press_Start_2P } from "next/font/google";
+import { Press_Start_2P, Space_Mono } from "next/font/google";
 import "./globals.css";
 
 const pixelFont = Press_Start_2P({
@@ -7,6 +7,13 @@ const pixelFont = Press_Start_2P({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-pixel",
+});
+
+const monoFont = Space_Mono({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -40,7 +47,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={pixelFont.variable}>
+    <html lang="en" className={`${pixelFont.variable} ${monoFont.variable}`}>
       <body>{children}</body>
     </html>
   );

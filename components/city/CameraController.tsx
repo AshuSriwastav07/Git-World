@@ -13,16 +13,20 @@ import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 const DEFAULT_POS = new THREE.Vector3(80, 55, 160);
 const DEFAULT_TGT = new THREE.Vector3(0, 5, 0);
 
+/* ── Pre-allocated WASD vectors (avoid GC pressure in useFrame) ── */
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _pan = new THREE.Vector3();
+
 export default function CameraController() {
   const controlsRef = useRef<OCType>(null);
   const { camera, clock } = useThree();
 
   const selectedUser     = useCityStore(s => s.selectedUser);
   const sortedLogins     = useCityStore(s => s.sortedLogins);
-  const isAirplaneMode   = useCityStore(s => s.isAirplaneMode);
+  const flightMode       = useCityStore(s => s.flightMode);
   const flyTarget        = useCityStore(s => s.flyTarget);
   const setFlyTarget     = useCityStore(s => s.setFlyTarget);
-  const toggleAirplaneMode = useCityStore(s => s.toggleAirplaneMode);
   const toggleNight      = useCityStore(s => s.toggleNight);
   const setRankChartOpen = useCityStore(s => s.setRankChartOpen);
   const isRankChartOpen  = useCityStore(s => s.isRankChartOpen);
@@ -30,6 +34,8 @@ export default function CameraController() {
   const introStartTime   = useCityStore(s => s.introStartTime);
   const userInteracted   = useCityStore(s => s.userInteracted);
   const setUserInteracted = useCityStore(s => s.setUserInteracted);
+  const setActiveMode    = useCityStore(s => s.setActiveMode);
+  const activeMode       = useCityStore(s => s.activeMode);
 
   const flyAnim = useRef({
     active: false,
@@ -80,12 +86,13 @@ export default function CameraController() {
       keysPressed.current.add(key);
       // Mark user interaction on keyboard press
       if (!useCityStore.getState().userInteracted) useCityStore.getState().setUserInteracted();
-      if (key === 'f') toggleAirplaneMode();
       if (key === 'n') toggleNight();
       if (key === 'r') setRankChartOpen(!isRankChartOpen);
       if (key === 'escape') {
         useCityStore.getState().setSelectedUser(null);
         useCityStore.getState().setRankChartOpen(false);
+        const current = useCityStore.getState().activeMode;
+        if (current === 'explore') useCityStore.getState().setActiveMode('menu');
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => keysPressed.current.delete(e.key.toLowerCase());
@@ -95,7 +102,7 @@ export default function CameraController() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isRankChartOpen, setRankChartOpen, toggleAirplaneMode, toggleNight]);
+  }, [isRankChartOpen, setRankChartOpen, toggleNight]);
 
   // ── Fly to selected building (offset camera right so building is on left half, panel on right) ──
   useEffect(() => {
@@ -130,11 +137,29 @@ export default function CameraController() {
 
   // ── Frame loop ──
   useFrame((_, rawDelta) => {
-    if (isAirplaneMode) return;
+    if (flightMode) return;
     const delta = Math.min(rawDelta, 0.06);
 
     // ── Cinematic camera sweep during intro ──
-    if ((introStage === 'cinematic' || introStage === 'loading') && introStartTime > 0) {
+    if ((introStage === 'cinematic' || introStage === 'loading') && !userInteracted) {
+      if (introStartTime === 0) {
+        // Canvas mounted but buildings haven't started rising yet (s60-s90)
+        // Hold camera high above city, slow orbit
+        const el = clock.getElapsedTime();
+        const angle = el * 0.15; // slow orbit
+        camera.position.set(
+          Math.cos(angle) * 180,
+          250,
+          Math.sin(angle) * 180
+        );
+        if (controlsRef.current) {
+          controlsRef.current.target.set(0, 0, 0);
+          controlsRef.current.update();
+        }
+        return;
+      }
+
+      // Buildings rising — descent camera sweep
       const elapsed = (Date.now() - introStartTime) / 1000; // seconds
       const SWEEP_DURATION = 12; // match cinematic duration
       const t = Math.min(elapsed / SWEEP_DURATION, 1);
@@ -161,19 +186,18 @@ export default function CameraController() {
       return; // skip normal camera logic during cinematic
     }
 
-    // ── WASD panning ──
+    // ── WASD panning (pre-allocated vectors) ──
     if (controlsRef.current && !flyAnim.current.active) {
       const speed = keysPressed.current.has('shift') ? 150 : 50;
-      const keys = keysPressed.current;
-      const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
-      const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
-      const pan = new THREE.Vector3();
-      if (keys.has('w')) pan.add(forward.clone().multiplyScalar(speed * delta));
-      if (keys.has('s')) pan.add(forward.clone().multiplyScalar(-speed * delta));
-      if (keys.has('a')) pan.add(right.clone().multiplyScalar(-speed * delta));
-      if (keys.has('d')) pan.add(right.clone().multiplyScalar(speed * delta));
-      if (pan.length() > 0) { camera.position.add(pan); controlsRef.current.target.add(pan); }
+      const kp = keysPressed.current;
+      _fwd.set(0, 0, 0); camera.getWorldDirection(_fwd); _fwd.y = 0; _fwd.normalize();
+      _right.crossVectors(_fwd, camera.up).normalize();
+      _pan.set(0, 0, 0);
+      if (kp.has('w')) _pan.addScaledVector(_fwd, speed * delta);
+      if (kp.has('s')) _pan.addScaledVector(_fwd, -speed * delta);
+      if (kp.has('a')) _pan.addScaledVector(_right, -speed * delta);
+      if (kp.has('d')) _pan.addScaledVector(_right, speed * delta);
+      if (_pan.lengthSq() > 0) { camera.position.add(_pan); controlsRef.current.target.add(_pan); }
     }
 
     // ── Fly-to animation ──
@@ -190,7 +214,7 @@ export default function CameraController() {
     }
   });
 
-  if (isAirplaneMode) return (
+  if (flightMode) return (
     <OrbitControls
       ref={controlsRef}
       enabled={false}

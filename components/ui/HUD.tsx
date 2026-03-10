@@ -14,7 +14,6 @@ import { AirplaneHUD } from './AirplaneHUD';
 import { Controls } from './Controls';
 import { GitHubStars } from './GitHubStars';
 import { JoinToast } from './JoinToast';
-import { IntroOverlay } from './IntroOverlay';
 import { IntroButtons } from './IntroButtons';
 import { GitWorldLogo } from './GitWorldLogo';
 
@@ -27,13 +26,15 @@ export function HUD() {
   const setRankChartOpen = useCityStore((s) => s.setRankChartOpen);
   const isRankChartOpen = useCityStore((s) => s.isRankChartOpen);
   const introStage = useCityStore((s) => s.introStage);
+  const activeMode = useCityStore((s) => s.activeMode);
+  const flightMode = useCityStore((s) => s.flightMode);
+  const setActiveMode = useCityStore((s) => s.setActiveMode);
 
-  const showUI = introStage === 'done';
+  const showUI = introStage === 'done' && activeMode !== 'menu' && !flightMode;
 
   return (
     <>
       {/* Intro overlays — always mounted, self-hide when not active */}
-      <IntroOverlay />
       <IntroButtons />
       <LoadingScreen />
       <ProfileModal />
@@ -80,9 +81,16 @@ export function HUD() {
       </div>
       )}
 
-      {/* Bottom-left: minimap + controls */}
+      {/* Bottom-left: minimap + controls + menu button */}
       {showUI && (
       <div className="fixed bottom-16 left-3 z-20 flex flex-col gap-2 select-none">
+        <button
+          onClick={() => setActiveMode('menu')}
+          className="px-2 py-1 bg-[#1a1a2e] border-2 border-[#fbbf24] text-[#fbbf24] text-[8px] hover:bg-[#fbbf2411] transition-colors w-fit"
+          style={{ fontFamily: FONT }}
+        >
+          MENU
+        </button>
         <div className="relative">
           <Controls />
         </div>

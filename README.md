@@ -4,8 +4,7 @@
 # 🧱 Git World — Every Developer Has a Building
 
 > **A 3D Minecraft-style city where every GitHub developer becomes a building.**
-> The more you code, the taller your building grows. Explore thousands of developer buildings, fly through the city, and find your place in the skyline.
-
+> The more you code, the taller your building grows. Explore thousands of developer buildings, fly over the city in an airplane, and find your place in the skyline.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
@@ -25,53 +24,189 @@ The city keeps growing automatically. New developers are discovered in the backg
 
 ---
 
-## ✨ Features
+## 🎬 Cinematic Intro
 
-### 🏗️ Every Developer is a Building
-- Each building represents one GitHub developer
-- Building height = developer's total score (commits + stars + followers + repos + activity)
-- Building color = developer's top programming language (JavaScript = yellow, Python = blue, Rust = orange, etc.)
-- Top-ranked developers get the tallest buildings in the center
+When you first open Git World, you're greeted by a **cinematic intro sequence** — complete with animated particles, a Minecraft-style progress bar, and a dramatic title reveal. After the intro, you're presented with a **mode selection menu** to choose how you want to experience the city.
 
-### 🎮 Explore the City
-- **Orbit** — Drag to rotate, scroll to zoom, right-click to pan
-- **Walk** — Use W/A/S/D keys to move around the city
-- **Fly** — Press F to enter Airplane Mode and fly freely through the skyline
-- **Click any building** to see that developer's full GitHub profile
+---
 
-### ✈️ Airplane Mode
-- Press **F** to toggle flight mode
-- **Mouse** controls pitch (up/down) and roll (tilt left/right)
-- Rolling automatically turns the plane (bank-to-turn, like a real airplane)
-- **Q/E** for direct left/right turning
-- **Shift** to boost speed, **Space** to slow down
-- See your speed, altitude, and heading on the flight HUD
+## 🏗️ Every Developer is a Building
 
-### 🌗 Day & Night Mode
-- Click the ☀️/🌙 button or press **N** to switch
-- At night, building windows glow with warm amber light
-- Street lights turn on and the sky fills with stars
+- Each building in the city represents **one real GitHub developer**
+- Building **height** = developer's total score (commits + stars + followers + repos + activity)
+- Building **color** = developer's top programming language (JavaScript = yellow, Python = blue, Rust = orange, etc.)
+- **Top-ranked developers** get the tallest buildings placed in the center of the city
+- The **#1 developer** gets a special gold crown with beacon and antenna on top
+- Click any building to open that developer's **full profile** — bio, location, top repos, commits, stars, and more
 
-### 🔍 Search Any Developer
-- Type any GitHub username in the search bar at the bottom
-- If they're not in the city yet, Git World fetches their profile from GitHub and adds a new building for them
-- Click the result to fly to their building
+---
 
-### 📊 Rankings & Stats
-- Click **RANKINGS** or press **R** to see the full leaderboard
-- Top 5 developers always visible in the bottom-right widget
-- Every building you click shows a detailed profile: bio, location, top repos, stars, commits, and more
+## 🎮 Five Ways to Explore
 
-### 📡 Real-Time City Growth
-- The city discovers new GitHub developers automatically in the background
-- New buildings appear in real time via Supabase Realtime
-- A live ticker at the bottom shows recent joins and rank changes
+After the intro, you choose from **5 modes** to experience Git World:
+
+| Mode | What It Does |
+|------|-------------|
+| 🏙️ **Explore City** | Orbit around the city, walk through streets with W/A/S/D, click buildings to view profiles |
+| ✈️ **Fly Over City** | Take off in a 3D airplane and fly freely over the entire skyline |
+| 🔥 **Trending Repos** | Jump to the Trending District to see this week's hottest GitHub repositories |
+| 🔍 **Find My Building** | Search for any GitHub username and fly directly to their building |
+| 🏆 **Leaderboard** | Open the full top-100 rankings chart |
+
+---
+
+## ✈️ Airplane Mode
+
+Take to the skies in a fully flyable **3D airplane** with third-person camera:
+
+- **W/S** — Pitch up and down
+- **A/D** — Turn left and right (the plane banks realistically)
+- **Q/E** — Gain or lose altitude
+- A live **flight HUD** shows your altitude, heading, and speed
+- Fly freely over every district — the main city, Tech Park, Silicon Valley, and the Trending District
+- Press **ESC** to land and return to the mode menu
+
+---
+
+## 🌳 Tech Park
+
+A beautiful **green park** nestled in the middle of the city — a place for the most active developers:
+
+- 🌲 **Trees and flowers** scattered across 50×50 green grounds
+- ⛲ **Central fountain** with animated water
+- 🪑 **Benches** for sitting and **desk clusters** for working
+- 💡 **Lamp posts** that glow warmly at night
+- 🚶 **Animated developer characters** — the top 60 most recently active developers walk the paths and sit on benches, each colored by their top language
+- 🏷️ A big glowing **"TECH PARK"** banner at the entrance
+- 🏗️ Surrounded by a **white picket fence** on all four sides
+
+---
+
+## 🏢 Silicon Valley Park
+
+A massive **200×200 dedicated zone** honoring the biggest names in tech — with four full company campuses and eight programming language districts:
+
+### 🍎 Apple Campus
+A **circular ring building** with a courtyard in the center, inspired by Apple Park. Developer buildings for Apple open-source contributors surround the campus.
+
+### 🔵 Google Campus
+**Googleplex-style glass blocks** with colorful panels in Google's signature red, blue, yellow, and green. Shows actual Google open-source contributor buildings.
+
+### 💚 NVIDIA Campus
+A **wave-roofed headquarters** with green glass bands, reflecting NVIDIA's brand. Features NVIDIA open-source contributor buildings.
+
+### 🔷 Meta Campus
+A **modern gridded glass box tower**, sleek and tall. Surrounded by buildings for Meta's open-source contributors.
+
+### 🗼 Burj Khalifa Tower
+Right in the center of Silicon Valley stands a **massive 104-unit landmark tower** inspired by the Burj Khalifa — with a tri-petal base, horizontal banding, **"GIT WORLD"** logo panels, and a tall spire with a glowing tip.
+
+### 🏁 Flying Banners
+Three **orbiting banners** circle the Burj Khalifa at different heights, displaying the Git World slogan, creator credit, and a live count of developers in the city.
+
+### 💻 Eight Language Districts
+The south side of Silicon Valley is divided into **8 language zones** — one for each major programming language:
+
+| District | Color |
+|----------|-------|
+| 🐍 Python | Blue |
+| 🟡 JavaScript | Yellow |
+| 🔵 TypeScript | Blue |
+| ☕ Java | Orange |
+| 🦀 Rust | Copper |
+| 🐹 Go | Cyan |
+| ⚙️ C++ | Dark Blue |
+| 💜 Kotlin | Purple |
+
+Each district has its own **monument**, **language banner**, and buildings for top developers who code in that language.
+
+### 🚪 Entrance Arches
+The park is connected by a **main boulevard** with golden-lined roads and arched banners reading **"SILICON VALLEY"** on one side and **"GIT WORLD"** on the other.
+
+---
+
+## 🔥 Trending Repos District
+
+A dedicated zone showcasing the **top 20 trending GitHub repositories** of the week:
+
+- Each trending repo gets its own **3D building** — the more stars it earned this week, the taller it stands
+- A big **billboard sign** reads **"⭐ This Week Famous Repos ⭐"** at the entrance
+- Buildings update **in real time** — when a repo surges in stars, its building grows live
+- Colorful **border posts** surround the district, each glowing with a different programming language color
+- A perfect place to discover what's hot on GitHub right now
+
+---
+
+## 🌗 Day & Night Mode
+
+- Click the ☀️/🌙 button or press **N** to switch between day and night
+- At night, **building windows glow** with warm amber light
+- The **Tech Park's lamp posts** light up
+- **Silicon Valley campuses** glow in their brand colors — Apple silver, Google blue, NVIDIA green, Meta blue
+- The **Burj Khalifa spire** shines brightly
+- Street lights turn on and the **sky fills with stars**
+
+---
+
+## 🔍 Search Any Developer
+
+- Type any GitHub username in the **search bar**
+- If they're already in the city, the camera **flies to their building**
+- If they're not in the city yet, Git World **fetches their profile from GitHub** and builds a new building for them instantly
+- Every developer on GitHub can have a building in Git World
+
+---
+
+## 📊 Rankings & Leaderboard
+
+- Click **RANKINGS** or press **R** to see the full **top-100 leaderboard**
+- A **Top 5 widget** is always visible in the corner — click any name to fly to their building
+- Every building you click shows a **detailed profile panel** with bio, location, top repos, stars, commits, rank, and tier
+
+---
+
+## 🔦 God Ray Spotlight
+
+When you click on any building, a dramatic **neon blue spotlight** descends from the sky onto that building — with pulsing rings, rotating halos, and an upward cone marker. It makes the selected developer's building impossible to miss.
+
+---
+
+## 📡 Real-Time City Growth
+
+- The city **discovers new GitHub developers automatically** in the background
+- New buildings appear **in real time** via live database subscriptions
+- A **scrolling live feed ticker** at the bottom shows recent events — new developers joining, buildings growing, rank changes
 - Building count updates live as new developers are added
+- The city is **always expanding** — it never stops growing
 
-### 🗺️ Minimap
-- Small overview map in the bottom-left corner
-- Shows your current camera position in the city
-- Click anywhere on the minimap to jump to that location
+---
+
+## 🗺️ Minimap
+
+- A small **overhead map** in the bottom-left corner
+- Shows colored dots for every building, highlighted zones for parks and company campuses
+- See your current camera position at a glance
+- Click anywhere on the minimap to **jump to that location**
+
+---
+
+## 🎵 What Makes Git World Special
+
+| Feature | Description |
+|---------|-------------|
+| **5,000+ buildings** | Each one is a real GitHub developer |
+| **4 tech company campuses** | Apple, Google, NVIDIA, and Meta — with real contributor data |
+| **8 language districts** | Python, JavaScript, TypeScript, Java, Rust, Go, C++, Kotlin |
+| **Burj Khalifa tower** | A 104-unit landmark at the heart of Silicon Valley |
+| **Flyable airplane** | 3rd-person flight with live altitude, heading & speed HUD |
+| **Trending repos** | Top 20 GitHub repos of the week, updated live |
+| **Tech Park** | Green park with trees, fountain, benches, animated developer characters |
+| **Day/night cycle** | Glowing windows, street lights, brand-colored campus lighting |
+| **Cinematic intro** | Particle effects, progress bar, dramatic title reveal |
+| **Real-time growth** | New buildings appear live, live feed ticker, auto-discovery |
+| **Profile on click** | Full GitHub stats, top repos, bio, stars, commits, rank |
+| **God Ray spotlight** | Dramatic neon spotlight when selecting any building |
+| **Minimap** | Overhead view with click-to-jump navigation |
 
 ---
 
@@ -80,16 +215,16 @@ The city keeps growing automatically. New developers are discovered in the backg
 ### As a Visitor (Just Browsing)
 
 1. **Open the site** — The city loads automatically with thousands of developer buildings
-2. **Click anywhere** to skip the intro and start exploring immediately
+2. **Watch the intro** or click to skip — then pick a mode from the menu
 3. **Click any building** to see that developer's GitHub profile, stats, and top repositories
 4. **Search for a developer** — Type a GitHub username in the search bar to find or add them
 5. **Switch to night mode** — Click the sun/moon icon to see the city glow at night
-6. **Open rankings** — Click RANKINGS to see who has the tallest buildings
+6. **Fly over the city** — Pick Airplane Mode and soar over every district
 
 ### As a Developer (Finding Your Building)
 
 1. **Search your GitHub username** in the search bar
-2. If you're already in the city, it flies to your building
+2. If you're already in the city, the camera flies to your building
 3. If you're not in the city yet, Git World adds you automatically
 4. Your building height depends on your GitHub activity — more commits, stars, and repos = taller building
 5. Come back later and your building may have grown as your stats update
@@ -99,12 +234,12 @@ The city keeps growing automatically. New developers are discovered in the backg
 | Key | Action |
 |-----|--------|
 | **W/A/S/D** | Move camera around the city |
-| **Shift** | Sprint (faster movement) |
-| **F** | Toggle Airplane Mode |
 | **N** | Toggle Day/Night |
 | **R** | Toggle Rankings |
-| **Esc** | Close panels / Deselect building |
-| **Q/E** | Yaw left/right (in Airplane Mode) |
+| **Esc** | Close panels / Return to mode menu |
+| **W/S** | Pitch up/down (in Airplane Mode) |
+| **A/D** | Turn left/right (in Airplane Mode) |
+| **Q/E** | Gain/lose altitude (in Airplane Mode) |
 
 ---
 
@@ -133,65 +268,11 @@ This score determines:
 | **Three.js** | 3D rendering engine |
 | **React Three Fiber** | React bindings for Three.js |
 | **@react-three/drei** | Camera controls, helpers, effects |
-| **Supabase** | Database, realtime subscriptions, authentication |
+| **Supabase** | Database, realtime subscriptions |
 | **Zustand** | Lightweight state management |
 | **TypeScript** | Type safety across the entire codebase |
 | **Tailwind CSS 4** | UI styling |
 | **Press Start 2P** | Pixel art font for the retro Minecraft aesthetic |
-
----
-
-## ⚡ Performance
-
-Git World renders **5,000+ buildings at 60fps** using these optimizations:
-
-- **InstancedMesh** — All buildings are drawn in just 2 GPU draw calls (body + glow) instead of thousands of individual objects
-- **Batched state updates** — New users are buffered for 400ms and applied in a single re-render
-- **Canvas textures** — Window patterns and grass are generated once on a `<canvas>` and cached
-- **Neutral window texture** — One shared texture tinted per-building by `instanceColor` (no per-building texture creation)
-- **Frustum culling disabled** — InstancedMesh handles all visibility internally
-
----
-
-## 📁 Project Structure
-
-```
-app/
-  api/
-    city/add/route.ts        Add or update a developer building
-    city/users/route.ts      Paginated user listing
-    github/[username]/       Fetch a GitHub profile
-    github/stream/route.ts   SSE discovery stream for new developers
-  globals.css                Global styles
-  layout.tsx                 Root layout with metadata
-  page.tsx                   App bootstrap — loads city, starts streams
-
-components/
-  city/
-    CityGrid.tsx             InstancedMesh rendering (main 3D scene)
-    CityScene.tsx            Canvas setup, lighting, sky, stars
-    CameraController.tsx     Orbit controls, auto-rotate, fly-to, WASD
-    Airplane.tsx             Flight physics and airplane model
-    TechPark.tsx             Park area with animated characters
-    ...                      Fireworks, spotlights, banner planes, etc.
-  ui/
-    HUD.tsx                  Top bar, live count, night toggle, rankings
-    SearchBar.tsx            GitHub username search + add
-    ProfileModal.tsx         Developer profile popup
-    RankChart.tsx            Full leaderboard
-    IntroOverlay.tsx         Cinematic intro sequence
-    IntroButtons.tsx         Action buttons (Explore, Airplane, etc.)
-    ...                      MiniMap, LiveFeed, TopFive, Controls, etc.
-
-lib/
-  cityStore.ts               Zustand store — all app state
-  cityLayout.ts              Spiral grid placement + building dimensions
-  supabaseDb.ts              Database operations + realtime subscriptions
-  supabase.ts                Supabase client helpers
-  textureGenerator.ts        Canvas-based texture generation + caching
-  cityStream.ts              Client-side SSE stream connection
-  githubTokens.ts            GitHub API token rotation
-```
 
 ---
 
@@ -282,40 +363,3 @@ This project is licensed under the **GNU Affero General Public License v3.0 (AGP
 You are free to use, modify, and distribute this software under the terms of the AGPL-3.0. If you run a modified version on a server that users interact with over a network, you must make the source code of your modified version available to those users.
 
 See the [LICENSE](LICENSE) file for the full license text.
-
-Required values:
-
-```bash
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-NEXT_PUBLIC_FIREBASE_APP_ID=
-NEXT_PUBLIC_FIREBASE_DATABASE_URL=
-
-GITHUB_TOKEN_1=
-GITHUB_TOKEN_2=
-GITHUB_TOKEN_3=
-```
-
-`.env.local` is intentionally ignored by Git so secrets are not committed.
-
-## Available Scripts
-
-```bash
-npm run dev
-npm run build
-npm run start
-npm run lint
-```
-
-## Notes
-
-- The project depends on Firebase for persistent city storage and live event updates.
-- GitHub API requests use token rotation to reduce rate-limit pressure.
-- Discovery and ranking behavior are designed around visual city growth rather than strict analytics precision.
-
-## Repository Summary
-
-This repository contains the full source code for a stylized interactive GitHub developer city experience that combines 3D rendering, data visualization, gamified ranking, and live backend-driven updates.

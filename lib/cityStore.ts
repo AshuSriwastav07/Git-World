@@ -5,6 +5,8 @@ import { create } from 'zustand';
 import type { SlimUser } from '@/lib/supabaseDb';
 import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 
+export type ActiveMode = 'menu' | 'explore' | 'fly' | 'trending' | 'search' | 'leaderboard';
+
 interface CityStoreState {
   users: Map<string, SlimUser>;
   sortedLogins: string[];
@@ -24,6 +26,10 @@ interface CityStoreState {
   introProgress: number;
   /** True when user has interacted (clicked/touched/keypress) — stops auto-rotate */
   userInteracted: boolean;
+  /** Current active mode — drives menu, flight, panels */
+  activeMode: ActiveMode;
+  /** True when airplane flight system is running */
+  flightMode: boolean;
 
   addUser: (user: SlimUser) => void;
   addUsers: (users: SlimUser[]) => void;
@@ -43,6 +49,8 @@ interface CityStoreState {
   setIntroStartTime: (time: number) => void;
   setIntroProgress: (progress: number) => void;
   setUserInteracted: () => void;
+  setActiveMode: (mode: ActiveMode) => void;
+  setFlightMode: (active: boolean) => void;
 }
 
 function computeSortedLogins(users: Map<string, SlimUser>): string[] {
@@ -79,6 +87,8 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   introStartTime: 0,
   introProgress: 0,
   userInteracted: false,
+  activeMode: 'menu' as ActiveMode,
+  flightMode: false,
 
   addUser: (user: SlimUser) => {
     pendingBuffer.push(user);
@@ -170,4 +180,17 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   setIntroProgress: (progress) => set({ introProgress: progress }),
 
   setUserInteracted: () => set({ userInteracted: true }),
+
+  setActiveMode: (mode: ActiveMode) => set({
+    activeMode: mode,
+    // Sync legacy flags for backward compat
+    isAirplaneMode: mode === 'fly',
+    flightMode: mode === 'fly',
+  }),
+
+  setFlightMode: (active: boolean) => set({
+    flightMode: active,
+    isAirplaneMode: active,
+    activeMode: active ? 'fly' : 'menu',
+  }),
 }));
