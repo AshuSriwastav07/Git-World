@@ -147,7 +147,7 @@ const PARK_HALF = 25;
 // Silicon Valley Park — rectangular park embedded in the city (200×200)
 export const SV_CENTER = { x: 75, z: 75 };
 export const SV_RADIUS = 80; // kept for backward compat
-export const SV_HALF = 100;   // half-extent of 200×200 rectangular park
+export const SV_HALF = 110;   // half-extent of 220×220 rectangular park (8 company campuses)
 
 // Trending Repositories District — southwest of city
 export const TRENDING_CENTER = { x: -120, z: 120 };

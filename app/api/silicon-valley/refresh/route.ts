@@ -44,6 +44,26 @@ const COMPANY_CONFIG: Record<string, CompanySource> = {
     searchTerms: ['Meta', 'Facebook'],
     profileCompanyMatch: ['meta', 'facebook'],
   },
+  amazon: {
+    orgs: ['amzn', 'aws'],
+    searchTerms: ['Amazon', 'AWS'],
+    profileCompanyMatch: ['amazon', 'aws'],
+  },
+  microsoft: {
+    orgs: ['microsoft', 'Azure'],
+    searchTerms: ['Microsoft'],
+    profileCompanyMatch: ['microsoft'],
+  },
+  tesla: {
+    orgs: ['teslamotors'],
+    searchTerms: ['Tesla'],
+    profileCompanyMatch: ['tesla'],
+  },
+  netflix: {
+    orgs: ['Netflix'],
+    searchTerms: ['Netflix'],
+    profileCompanyMatch: ['netflix'],
+  },
 };
 
 const LANGUAGE_LIST = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Rust', 'Go', 'C++', 'Kotlin'];

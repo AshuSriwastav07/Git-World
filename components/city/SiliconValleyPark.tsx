@@ -1,7 +1,7 @@
-// SiliconValleyPark — Rectangular 200×200 park
-// North: 4 company campuses in a single row
-// South: 8 language districts in 2 rows × 4
-// Burj Khalifa between language rows
+// SiliconValleyPark — Rectangular 220×220 park
+// North 60%: 8 company campuses in two rows of 4 (wide spacing)
+// Middle: Main boulevard + Burj Khalifa
+// South 40%: 8 language districts in 2 rows × 4
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -16,6 +16,11 @@ import { AppleQuadrant } from './svpark/AppleQuadrant';
 import { GoogleQuadrant } from './svpark/GoogleQuadrant';
 import { NvidiaQuadrant } from './svpark/NvidiaQuadrant';
 import { MetaQuadrant } from './svpark/MetaQuadrant';
+import { CompanySector } from './svpark/CompanySector';
+import { AmazonBuilding } from './svpark/buildings/AmazonBuilding';
+import { MicrosoftBuilding } from './svpark/buildings/MicrosoftBuilding';
+import { TeslaBuilding } from './svpark/buildings/TeslaBuilding';
+import { NetflixBuilding } from './svpark/buildings/NetflixBuilding';
 
 export interface SVContributor {
   login: string;
@@ -29,11 +34,12 @@ export interface SVContributor {
   publicRepos: number;
 }
 
-type CompanyKey = 'apple' | 'google' | 'nvidia' | 'meta';
+type CompanyKey = 'apple' | 'google' | 'nvidia' | 'meta' | 'amazon' | 'microsoft' | 'tesla' | 'netflix';
 
 function useFetchAllSVData() {
   const [companies, setCompanies] = useState<Record<CompanyKey, SVContributor[]>>({
     apple: [], google: [], nvidia: [], meta: [],
+    amazon: [], microsoft: [], tesla: [], netflix: [],
   });
   const [languageDevs, setLanguageDevs] = useState<Record<string, LanguageDev[]>>({});
 
@@ -230,28 +236,31 @@ function BoulevardArch({ position }: { position: [number, number, number] }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// LAYOUT CONSTANTS
-// Park is 200×200, centered at SV_CENTER
-// North section: 4 company campuses in single row
-// South section: 8 language districts in 2×4 grid
-// Main boulevard at z=-28, central road at z=17 (with Burj Khalifa)
+// LAYOUT CONSTANTS — 220×220 park
+// North 60%: 8 company campuses in two rows of 4 (z = -75 back, z = -10 front)
+// Middle: Main boulevard + Burj Khalifa (z = 26)
+// South 40%: 8 language districts 2×4 grid (z = 50 row1, z = 90 row2)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PARK_HALF = SV_HALF; // 100 units from center to edge
+const PARK_HALF = SV_HALF; // 110 units from center to edge
 
-// Company campus positions — single row across the north
+// Company campus positions — two rows, spacing ~50 units between centers
 const COMPANY_POSITIONS: Record<CompanyKey, [number, number, number]> = {
-  apple:  [-69, 0, -55],
-  google: [-23, 0, -55],
-  nvidia: [23, 0, -55],
-  meta:   [69, 0, -55],
+  apple:  [-75, 0, -10],
+  google: [-25, 0, -10],
+  nvidia: [25, 0, -10],
+  meta:   [75, 0, -10],
+  amazon:    [-75, 0, -75],
+  microsoft: [-25, 0, -75],
+  tesla:     [25, 0, -75],
+  netflix:   [75, 0, -75],
 };
 
-// Language district grid — 2 rows × 4 columns
-const LANG_GRID_START_X = -69;
-const LANG_GRID_STEP_X  = 46;
-const LANG_GRID_START_Z = -5;
-const LANG_GRID_STEP_Z  = 47;
+// Language district grid — 2 rows × 4 columns (south 40%)
+const LANG_GRID_START_X = -75;
+const LANG_GRID_STEP_X  = 50;
+const LANG_GRID_START_Z = 50;
+const LANG_GRID_STEP_Z  = 40;
 
 export function SiliconValleyPark() {
   const isNight = useCityStore(s => s.isNight);
@@ -305,41 +314,27 @@ export function SiliconValleyPark() {
         <pointLight position={[-(PARK_HALF - 1), 4, 0]} color="#d4a017" intensity={3} distance={12} />
       )}
 
-      {/* ═══ MAIN BOULEVARD (z = -28, runs east-west) ═══ */}
-      <mesh position={[0, 0.06, -28]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 6]} />
+      {/* ═══ MAIN BOULEVARD (z = 26, divides companies from languages) ═══ */}
+      <mesh position={[0, 0.06, 26]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[PARK_HALF * 2, 8]} />
         <meshLambertMaterial color="#8B7355" />
       </mesh>
-      <mesh position={[0, 0.07, -25]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.07, 22]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[PARK_HALF * 2, 0.5]} />
         <meshLambertMaterial color="#d4a017" />
       </mesh>
-      <mesh position={[0, 0.07, -31]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
-        <meshLambertMaterial color="#d4a017" />
-      </mesh>
-
-      {/* ═══ CENTRAL ROAD between language rows (z = 17) ═══ */}
-      <mesh position={[0, 0.06, 17]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 6]} />
-        <meshLambertMaterial color="#8B7355" />
-      </mesh>
-      <mesh position={[0, 0.07, 14]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
-        <meshLambertMaterial color="#d4a017" />
-      </mesh>
-      <mesh position={[0, 0.07, 20]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0.07, 30]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[PARK_HALF * 2, 0.5]} />
         <meshLambertMaterial color="#d4a017" />
       </mesh>
 
       {/* ── Boulevard banner arches ── */}
-      <BoulevardArch position={[0, 0, -28]} />
-      <BoulevardArch position={[-55, 0, -28]} />
-      <BoulevardArch position={[55, 0, -28]} />
+      <BoulevardArch position={[0, 0, 26]} />
+      <BoulevardArch position={[-55, 0, 26]} />
+      <BoulevardArch position={[55, 0, 26]} />
 
-      {/* ── Burj Khalifa Tower (center of road between language rows) ── */}
-      <group position={[0, 0, 17]}>
+      {/* ── Burj Khalifa Tower (center of main boulevard) ── */}
+      <group position={[0, 0, 26]}>
         <BurjKhalifaTower />
         <FlyingBanners />
       </group>
@@ -355,8 +350,16 @@ export function SiliconValleyPark() {
         position={[COMPANY_POSITIONS.nvidia[0], 4, COMPANY_POSITIONS.nvidia[2] + 22]} />
       <ParkBanner text="META" bgColor="#0a1628" textColor="#0082fb"
         position={[COMPANY_POSITIONS.meta[0], 4, COMPANY_POSITIONS.meta[2] + 22]} />
+      <ParkBanner text="AMAZON" bgColor="#232F3E" textColor="#FF9900"
+        position={[COMPANY_POSITIONS.amazon[0], 4, COMPANY_POSITIONS.amazon[2] + 22]} />
+      <ParkBanner text="MICROSOFT" bgColor="#f3f3f3" textColor="#00a4ef"
+        position={[COMPANY_POSITIONS.microsoft[0], 4, COMPANY_POSITIONS.microsoft[2] + 22]} />
+      <ParkBanner text="TESLA" bgColor="#1a1a1f" textColor="#E31937"
+        position={[COMPANY_POSITIONS.tesla[0], 4, COMPANY_POSITIONS.tesla[2] + 22]} />
+      <ParkBanner text="NETFLIX" bgColor="#221f1f" textColor="#E50914"
+        position={[COMPANY_POSITIONS.netflix[0], 4, COMPANY_POSITIONS.netflix[2] + 22]} />
 
-      {/* Four company quadrants */}
+      {/* Four company quadrants (row 1) */}
       <group position={COMPANY_POSITIONS.apple}>
         <AppleQuadrant contributors={companies.apple} />
       </group>
@@ -368,6 +371,32 @@ export function SiliconValleyPark() {
       </group>
       <group position={COMPANY_POSITIONS.meta}>
         <MetaQuadrant contributors={companies.meta} />
+      </group>
+
+      {/* Four new company campuses (row 2) */}
+      <group position={COMPANY_POSITIONS.amazon}>
+        <CompanySector
+          config={{ name: 'Amazon', brandColor: '#FF9900', bgColor: '#232F3E', building: <AmazonBuilding position={[0, 0, 0]} scale={1} /> }}
+          developers={companies.amazon}
+        />
+      </group>
+      <group position={COMPANY_POSITIONS.microsoft}>
+        <CompanySector
+          config={{ name: 'Microsoft', brandColor: '#00a4ef', bgColor: '#f3f3f3', building: <MicrosoftBuilding position={[0, 0, 0]} scale={1} /> }}
+          developers={companies.microsoft}
+        />
+      </group>
+      <group position={COMPANY_POSITIONS.tesla}>
+        <CompanySector
+          config={{ name: 'Tesla', brandColor: '#E31937', bgColor: '#1a1a1f', building: <TeslaBuilding position={[0, 0, 0]} scale={1} /> }}
+          developers={companies.tesla}
+        />
+      </group>
+      <group position={COMPANY_POSITIONS.netflix}>
+        <CompanySector
+          config={{ name: 'Netflix', brandColor: '#E50914', bgColor: '#221f1f', building: <NetflixBuilding position={[0, 0, 0]} scale={1} /> }}
+          developers={companies.netflix}
+        />
       </group>
 
       {/* ═══ SOUTH — LANGUAGE DISTRICTS (2 rows × 4) ═══ */}
@@ -392,17 +421,17 @@ export function SiliconValleyPark() {
         );
       })}
 
-      {/* ── Hedge row between companies and boulevard ── */}
-      {Array.from({ length: 20 }).map((_, i) => (
-        <mesh key={`hedge-n-${i}`} position={[-90 + i * 10, 0.5, -33]} >
+      {/* ── Hedge row north of boulevard ── */}
+      {Array.from({ length: 22 }).map((_, i) => (
+        <mesh key={`hedge-n-${i}`} position={[-105 + i * 10, 0.5, 20]} >
           <boxGeometry args={[8, 1, 0.6]} />
           <meshLambertMaterial color="#2d5a27" />
         </mesh>
       ))}
 
-      {/* ── Hedge row between boulevard and languages ── */}
-      {Array.from({ length: 20 }).map((_, i) => (
-        <mesh key={`hedge-s-${i}`} position={[-90 + i * 10, 0.5, -23]} >
+      {/* ── Hedge row south of boulevard ── */}
+      {Array.from({ length: 22 }).map((_, i) => (
+        <mesh key={`hedge-s-${i}`} position={[-105 + i * 10, 0.5, 32]} >
           <boxGeometry args={[8, 1, 0.6]} />
           <meshLambertMaterial color="#2d5a27" />
         </mesh>
@@ -414,7 +443,7 @@ export function SiliconValleyPark() {
         return (
           <group key={`blamp-${i}`}>
             {/* North side lamp */}
-            <group position={[x, 0, -32]}>
+            <group position={[x, 0, 19]}>
               <mesh position={[0, 2, 0]}>
                 <boxGeometry args={[0.15, 4, 0.15]} />
                 <meshLambertMaterial color="#555" />
@@ -432,7 +461,7 @@ export function SiliconValleyPark() {
               )}
             </group>
             {/* South side lamp */}
-            <group position={[x, 0, -24]}>
+            <group position={[x, 0, 33]}>
               <mesh position={[0, 2, 0]}>
                 <boxGeometry args={[0.15, 4, 0.15]} />
                 <meshLambertMaterial color="#555" />
@@ -457,23 +486,27 @@ export function SiliconValleyPark() {
       {isNight && (
         <>
           {/* Boulevard glow */}
-          <pointLight position={[0, 8, -28]} color="#ffe8b0" intensity={3} distance={PARK_HALF * 1.2} decay={1.5} />
+          <pointLight position={[0, 8, 26]} color="#ffe8b0" intensity={3} distance={PARK_HALF * 1.2} decay={1.5} />
           {/* Company zone lights */}
           <pointLight position={COMPANY_POSITIONS.apple} color="#c0c0c0" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.google} color="#4285f4" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.nvidia} color="#76b900" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.meta} color="#0082fb" intensity={1.5} distance={40} />
-          {/* Central road glow */}
-          <pointLight position={[0, 8, 17]} color="#ffe8b0" intensity={2} distance={60} />
+          <pointLight position={COMPANY_POSITIONS.amazon} color="#FF9900" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.microsoft} color="#00a4ef" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.tesla} color="#E31937" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.netflix} color="#E50914" intensity={1.5} distance={40} />
+          {/* Boulevard south glow */}
+          <pointLight position={[0, 8, 60]} color="#ffe8b0" intensity={2} distance={60} />
         </>
       )}
 
       {/* ═══ TREES ═══ */}
 
-      {/* Trees between company campuses (border columns) */}
-      {[-46, 0, 46].map((x, gi) =>
-        Array.from({ length: 5 }).map((_, j) => (
-          <group key={`btree-${gi}-${j}`} position={[x, 0, -72 + j * 9]}>
+      {/* Trees between company campuses (border columns, rows 1 & 2) */}
+      {[-50, 0, 50].map((x, gi) =>
+        Array.from({ length: 8 }).map((_, j) => (
+          <group key={`btree-${gi}-${j}`} position={[x, 0, -100 + j * 12]}>
             <mesh position={[0, 1.2, 0]}>
               <boxGeometry args={[0.5, 2.4, 0.5]} />
               <meshLambertMaterial color="#8B4513" />
@@ -487,8 +520,8 @@ export function SiliconValleyPark() {
       )}
 
       {/* Trees along west perimeter */}
-      {Array.from({ length: 8 }).map((_, i) => (
-        <group key={`ptw-${i}`} position={[-95, 0, -75 + i * 22]}>
+      {Array.from({ length: 10 }).map((_, i) => (
+        <group key={`ptw-${i}`} position={[-105, 0, -100 + i * 22]}>
           <mesh position={[0, 1.5, 0]}>
             <boxGeometry args={[0.6, 3, 0.6]} />
             <meshLambertMaterial color="#8B4513" />
@@ -501,8 +534,8 @@ export function SiliconValleyPark() {
       ))}
 
       {/* Trees along east perimeter */}
-      {Array.from({ length: 8 }).map((_, i) => (
-        <group key={`pte-${i}`} position={[95, 0, -75 + i * 22]}>
+      {Array.from({ length: 10 }).map((_, i) => (
+        <group key={`pte-${i}`} position={[105, 0, -100 + i * 22]}>
           <mesh position={[0, 1.5, 0]}>
             <boxGeometry args={[0.6, 3, 0.6]} />
             <meshLambertMaterial color="#8B4513" />
@@ -515,9 +548,9 @@ export function SiliconValleyPark() {
       ))}
 
       {/* Southern garden grove */}
-      {Array.from({ length: 6 }).map((_, i) =>
-        Array.from({ length: 3 }).map((_, j) => (
-          <group key={`gtree-${i}-${j}`} position={[-70 + i * 28, 0, 62 + j * 12]}>
+      {Array.from({ length: 5 }).map((_, i) =>
+        Array.from({ length: 2 }).map((_, j) => (
+          <group key={`gtree-${i}-${j}`} position={[-80 + i * 40, 0, 98 + j * 10]}>
             <mesh position={[0, 1.5, 0]}>
               <boxGeometry args={[0.6, 3, 0.6]} />
               <meshLambertMaterial color="#6B4226" />
@@ -531,8 +564,8 @@ export function SiliconValleyPark() {
       )}
 
       {/* North perimeter trees */}
-      {Array.from({ length: 8 }).map((_, i) => (
-        <group key={`ptn-${i}`} position={[-75 + i * 22, 0, -95]}>
+      {Array.from({ length: 10 }).map((_, i) => (
+        <group key={`ptn-${i}`} position={[-100 + i * 22, 0, -105]}>
           <mesh position={[0, 1.5, 0]}>
             <boxGeometry args={[0.6, 3, 0.6]} />
             <meshLambertMaterial color="#8B4513" />
@@ -544,9 +577,9 @@ export function SiliconValleyPark() {
         </group>
       ))}
 
-      {/* Decorative trees flanking central road */}
+      {/* Decorative trees flanking main boulevard */}
       {[-80, -50, 50, 80].map((x, i) => (
-        <group key={`rtree-${i}`} position={[x, 0, 17]}>
+        <group key={`rtree-${i}`} position={[x, 0, 26]}>
           <mesh position={[0, 1.2, 0]}>
             <boxGeometry args={[0.5, 2.4, 0.5]} />
             <meshLambertMaterial color="#8B4513" />

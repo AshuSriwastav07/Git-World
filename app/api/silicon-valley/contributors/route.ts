@@ -5,7 +5,7 @@ import { getSupabaseServer } from '@/lib/supabase';
 
 export const revalidate = 3600; // ISR: revalidate every hour
 
-const VALID_COMPANIES = new Set(['apple', 'google', 'nvidia', 'meta']);
+const VALID_COMPANIES = new Set(['apple', 'google', 'nvidia', 'meta', 'amazon', 'microsoft', 'tesla', 'netflix']);
 
 export async function GET(request: NextRequest) {
   const sb = getSupabaseServer();
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   if (company) {
     if (!VALID_COMPANIES.has(company)) {
       return NextResponse.json(
-        { error: 'Invalid company. Use: apple, google, nvidia, meta' },
+        { error: 'Invalid company. Use: apple, google, nvidia, meta, amazon, microsoft, tesla, netflix' },
         { status: 400 }
       );
     }
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Group company contributors (cap at 30 per company)
-  const companies: Record<string, unknown[]> = { apple: [], google: [], nvidia: [], meta: [] };
+  const companies: Record<string, unknown[]> = { apple: [], google: [], nvidia: [], meta: [], amazon: [], microsoft: [], tesla: [], netflix: [] };
   for (const row of (contribRes.data ?? []) as Record<string, unknown>[]) {
     const c = (row.company as string) ?? '';
     if (companies[c] && companies[c].length < 30) {
