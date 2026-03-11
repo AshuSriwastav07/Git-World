@@ -214,13 +214,7 @@ export default function CameraController() {
     }
   });
 
-  if (flightMode) return (
-    <OrbitControls
-      ref={controlsRef}
-      enabled={false}
-      makeDefault
-    />
-  );
+  if (flightMode) return null;
 
   // Auto-rotate: orbit slowly until user interacts
   const shouldAutoRotate = !userInteracted;

@@ -1,4 +1,4 @@
-// ProfileModal — CMD/Terminal style centered modal
+// ProfileModal — Premium CMD/Terminal panel: slide-in from right, two-phase render
 'use client';
 
 import { useCityStore } from '@/lib/cityStore';
@@ -9,22 +9,19 @@ import { loadUserProfile } from '@/lib/supabaseDb';
 import type { SlimUser, CityUser } from '@/lib/supabaseDb';
 
 const MONO = "'Courier New', 'Consolas', 'Monaco', monospace";
+const GREEN = '#00ff41';
+const BG = '#0a0f0a';
+const BG_LIGHT = '#111a11';
 
 // Profile cache — avoids re-fetching
 const profileCache = new Map<string, CityUser>();
 
-/** Terminal skeleton while loading */
-function TerminalSkeleton() {
-  return (
-    <div style={{ padding: '16px 20px', fontFamily: MONO, fontSize: 13, color: '#33ff33' }}>
-      <div style={{ marginBottom: 8 }}>{'>'} Loading profile...</div>
-      <div style={{ opacity: 0.4 }}>{'>'} Fetching data from GitHub...</div>
-      <div style={{ opacity: 0.3 }}>{'>'} Please wait...</div>
-      <div style={{ marginTop: 16 }}>
-        <span style={{ display: 'inline-block', width: '100%', height: 12, background: 'rgba(51,255,51,0.08)', animation: 'terminalBlink 1s infinite' }} />
-      </div>
-    </div>
-  );
+/** Preload a profile into cache (called on hover from CityGrid) */
+export function preloadProfile(login: string) {
+  if (profileCache.has(login.toLowerCase())) return;
+  loadUserProfile(login).then(stored => {
+    if (stored) profileCache.set(login.toLowerCase(), stored);
+  }).catch(() => {});
 }
 
 export function ProfileModal() {
@@ -33,8 +30,12 @@ export function ProfileModal() {
   const setFlyTarget   = useCityStore((s) => s.setFlyTarget);
   const [fullProfile, setFullProfile] = useState<CityUser | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [slideIn, setSlideIn] = useState(false);
 
-  const close = useCallback(() => setSelectedUser(null), [setSelectedUser]);
+  const close = useCallback(() => {
+    setSlideIn(false);
+    setTimeout(() => setSelectedUser(null), 250);
+  }, [setSelectedUser]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -44,7 +45,16 @@ export function ProfileModal() {
     return () => window.removeEventListener('keydown', handler);
   }, [close]);
 
-  // Lazy load full profile with cache
+  // Slide in after mount
+  useEffect(() => {
+    if (selectedUser) {
+      requestAnimationFrame(() => setSlideIn(true));
+    } else {
+      setSlideIn(false);
+    }
+  }, [selectedUser]);
+
+  // Two-phase profile load: instant from SlimUser, then enrich with CityUser
   useEffect(() => {
     if (!selectedUser) { setFullProfile(null); return; }
 
@@ -78,10 +88,12 @@ export function ProfileModal() {
   }, [selectedUser?.login]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isOpen = !!selectedUser;
-  const u = fullProfile ?? selectedUser;
-  const showSkeleton = isOpen && loadingProfile && !fullProfile;
+  // Phase 1: selectedUser (SlimUser) — always available instantly
+  // Phase 2: fullProfile (CityUser) — enriches with bio, repos, etc.
+  const u = selectedUser;
+  const full = fullProfile;
 
-  if (!isOpen) return null;
+  if (!isOpen || !u) return null;
 
   return (
     <>
@@ -90,43 +102,54 @@ export function ProfileModal() {
         onClick={close}
         style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.6)',
+          background: slideIn ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0)',
           zIndex: 999,
-          backdropFilter: 'blur(3px)',
+          backdropFilter: slideIn ? 'blur(2px)' : 'none',
+          transition: 'background 250ms ease, backdrop-filter 250ms ease',
         }}
       />
 
-      {/* Terminal window — centered */}
+      {/* Terminal panel — slide in from right */}
       <div
         style={{
           position: 'fixed',
-          top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: 'min(580px, 92vw)',
-          maxHeight: '85vh',
-          background: '#0a0a0a',
-          border: '1px solid #333',
-          borderRadius: 8,
+          top: 0, right: 0, bottom: 0,
+          width: 'min(440px, 92vw)',
+          background: BG,
+          border: 'none',
+          borderLeft: `1px solid ${GREEN}33`,
           zIndex: 1000,
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 1px rgba(51,255,51,0.15)',
+          boxShadow: slideIn
+            ? `0 0 80px rgba(0,255,65,0.08), -4px 0 20px rgba(0,0,0,0.6), inset 0 0 60px rgba(0,255,65,0.02)`
+            : 'none',
           overflow: 'hidden',
+          transform: slideIn ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 250ms cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
+        {/* Scan line overlay */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,65,0.015) 2px, rgba(0,255,65,0.015) 4px)',
+          pointerEvents: 'none',
+          zIndex: 2,
+        }} />
+
         {/* ── Title bar (macOS style) ── */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 14px',
-          background: '#1a1a1a',
-          borderBottom: '1px solid #333',
+          background: BG_LIGHT,
+          borderBottom: `1px solid ${GREEN}22`,
           userSelect: 'none',
+          position: 'relative', zIndex: 3,
         }}>
-          {/* Red dot close button */}
           <button
             onClick={close}
             style={{
-              width: 14, height: 14, borderRadius: '50%',
+              width: 13, height: 13, borderRadius: '50%',
               background: '#ff5f57', border: 'none',
               cursor: 'pointer', padding: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -136,16 +159,14 @@ export function ProfileModal() {
             onMouseEnter={e => e.currentTarget.style.color = '#4a0000'}
             onMouseLeave={e => e.currentTarget.style.color = 'transparent'}
           >×</button>
-          {/* Yellow + Green dots (decorative) */}
-          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#febc2e' }} />
-          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#28c840' }} />
-          {/* Title */}
+          <div style={{ width: 13, height: 13, borderRadius: '50%', background: '#febc2e' }} />
+          <div style={{ width: 13, height: 13, borderRadius: '50%', background: '#28c840' }} />
           <span style={{
             flex: 1, textAlign: 'center',
-            fontFamily: MONO, fontSize: 12, color: '#888',
-            letterSpacing: '0.05em',
+            fontFamily: MONO, fontSize: 11, color: GREEN + '88',
+            letterSpacing: '0.08em',
           }}>
-            dev@gitworld: ~/{u?.login ?? 'user'}
+            dev@gitworld: ~/{u.login}
           </span>
         </div>
 
@@ -153,35 +174,33 @@ export function ProfileModal() {
         <div style={{
           flex: 1, overflowY: 'auto', padding: '16px 20px',
           fontFamily: MONO, fontSize: 13, lineHeight: 1.7,
-          color: '#33ff33',
+          color: GREEN,
+          position: 'relative', zIndex: 1,
         }}>
-          {/* Skeleton while loading */}
-          {showSkeleton && <TerminalSkeleton />}
-
-          {/* No data */}
-          {!u && !loadingProfile && (
-            <div style={{ color: '#ff5555' }}>{'>'} Error: user not found</div>
-          )}
-
-          {/* Profile content */}
-          {u && !showSkeleton && <TerminalContent u={u} setFlyTarget={setFlyTarget} close={close} />}
+          <TerminalContent
+            u={u}
+            full={full}
+            loading={loadingProfile}
+            setFlyTarget={setFlyTarget}
+            close={close}
+          />
         </div>
       </div>
     </>
   );
 }
 
-/** Terminal-style profile content */
-function TerminalContent({ u, setFlyTarget, close }: {
-  u: SlimUser | CityUser;
+/** Terminal-style profile content — two-phase render */
+function TerminalContent({ u, full, loading, setFlyTarget, close }: {
+  u: SlimUser;
+  full: CityUser | null;
+  loading: boolean;
   setFlyTarget: (t: { x: number; y: number; z: number }) => void;
   close: () => void;
 }) {
-  const full = 'name' in u ? u as CityUser : null;
-
   return (
     <div>
-      {/* Header with avatar */}
+      {/* Header with avatar — always available from SlimUser */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
         {u.avatarUrl && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -193,7 +212,7 @@ function TerminalContent({ u, setFlyTarget, close }: {
             style={{
               imageRendering: 'pixelated',
               borderRadius: 4,
-              border: '2px solid #33ff33',
+              border: `2px solid ${GREEN}`,
               flexShrink: 0,
             }}
           />
@@ -202,7 +221,7 @@ function TerminalContent({ u, setFlyTarget, close }: {
           <div style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
             $ whoami
           </div>
-          <div style={{ color: '#33ff33', fontSize: 15, marginTop: 4 }}>
+          <div style={{ color: GREEN, fontSize: 15, marginTop: 4 }}>
             {u.login}
           </div>
           {full?.name && (
@@ -213,37 +232,37 @@ function TerminalContent({ u, setFlyTarget, close }: {
         </div>
       </div>
 
-      {/* Bio */}
+      {/* Bio — Phase 2 (fills in when CityUser arrives) */}
       {full?.bio && (
-        <div style={{ marginBottom: 14 }}>
-          <span style={{ color: '#888' }}>$ echo $BIO</span>
+        <div style={{ marginBottom: 14, animation: 'fadeIn 300ms ease' }}>
+          <span style={{ color: '#666' }}>$ echo $BIO</span>
           <div style={{ color: '#cccccc', marginTop: 2 }}>{full.bio}</div>
         </div>
       )}
 
-      {/* Location / Company */}
+      {/* Location / Company — Phase 2 */}
       {(full?.location || full?.company) && (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 14, animation: 'fadeIn 300ms ease' }}>
           {full.location && (
-            <div><span style={{ color: '#888' }}>location:</span> <span style={{ color: '#ffcc00' }}>{full.location}</span></div>
+            <div><span style={{ color: '#666' }}>location:</span> <span style={{ color: '#ffcc00' }}>{full.location}</span></div>
           )}
           {full.company && (
-            <div><span style={{ color: '#888' }}>company: </span> <span style={{ color: '#ffcc00' }}>{full.company}</span></div>
+            <div><span style={{ color: '#666' }}>company: </span> <span style={{ color: '#ffcc00' }}>{full.company}</span></div>
           )}
         </div>
       )}
 
       {/* Divider */}
-      <div style={{ color: '#333', marginBottom: 12 }}>{'─'.repeat(50)}</div>
+      <div style={{ color: GREEN + '22', marginBottom: 12 }}>{'─'.repeat(50)}</div>
 
-      {/* Building info */}
+      {/* Building info — always available from SlimUser */}
       <div style={{ marginBottom: 14 }}>
         <div style={{ color: '#ffffff', marginBottom: 6 }}>$ cat /building/info</div>
         <div style={{ paddingLeft: 8 }}>
-          <div><span style={{ color: '#888' }}>rank:  </span><span style={{ color: '#ff5555' }}>#{u.cityRank}</span></div>
-          <div><span style={{ color: '#888' }}>tier:  </span><span style={{ color: '#ff5555' }}>{getTier(u.cityRank)}</span></div>
-          <div><span style={{ color: '#888' }}>score: </span><span style={{ color: '#33ff33' }}>{u.totalScore?.toLocaleString()}</span></div>
-          <div><span style={{ color: '#888' }}>slot:  </span><span style={{ color: '#33ff33' }}>#{u.citySlot}</span></div>
+          <div><span style={{ color: '#666' }}>rank:  </span><span style={{ color: '#ff5555' }}>#{u.cityRank}</span></div>
+          <div><span style={{ color: '#666' }}>tier:  </span><span style={{ color: '#ff5555' }}>{getTier(u.cityRank)}</span></div>
+          <div><span style={{ color: '#666' }}>score: </span><span style={{ color: GREEN }}>{u.totalScore?.toLocaleString()}</span></div>
+          <div><span style={{ color: '#666' }}>slot:  </span><span style={{ color: GREEN }}>#{u.citySlot}</span></div>
         </div>
       </div>
 
@@ -259,51 +278,51 @@ function TerminalContent({ u, setFlyTarget, close }: {
           style={{
             display: 'block', width: '100%',
             background: 'transparent',
-            border: '1px solid #33ff33',
-            color: '#33ff33', padding: '8px',
+            border: `1px solid ${GREEN}44`,
+            color: GREEN, padding: '8px',
             fontSize: 13, cursor: 'pointer',
             fontFamily: MONO, marginBottom: 14,
-            transition: 'background 150ms',
+            transition: 'background 150ms, border-color 150ms',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(51,255,51,0.1)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          onMouseEnter={e => { e.currentTarget.style.background = `${GREEN}11`; e.currentTarget.style.borderColor = GREEN; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = `${GREEN}44`; }}
         >
           {'>'} cd /city/building/{u.citySlot} && look
         </button>
       )}
 
       {/* Divider */}
-      <div style={{ color: '#333', marginBottom: 12 }}>{'─'.repeat(50)}</div>
+      <div style={{ color: GREEN + '22', marginBottom: 12 }}>{'─'.repeat(50)}</div>
 
-      {/* Stats */}
+      {/* Stats — always available from SlimUser */}
       <div style={{ marginBottom: 14 }}>
         <div style={{ color: '#ffffff', marginBottom: 6 }}>$ cat /dev/stats</div>
         <div style={{ paddingLeft: 8 }}>
           <div>
-            <span style={{ color: '#888' }}>repos:   </span>
-            <span style={{ color: '#33ff33' }}>{(u.publicRepos ?? 0).toLocaleString()}</span>
+            <span style={{ color: '#666' }}>repos:   </span>
+            <span style={{ color: GREEN }}>{(u.publicRepos ?? 0).toLocaleString()}</span>
           </div>
           <div>
-            <span style={{ color: '#888' }}>stars:   </span>
+            <span style={{ color: '#666' }}>stars:   </span>
             <span style={{ color: '#ffcc00' }}>{(u.totalStars ?? 0).toLocaleString()}</span>
           </div>
           <div>
-            <span style={{ color: '#888' }}>commits: </span>
-            <span style={{ color: '#33ff33' }}>~{(u.estimatedCommits ?? 0).toLocaleString()}</span>
+            <span style={{ color: '#666' }}>commits: </span>
+            <span style={{ color: GREEN }}>~{(u.estimatedCommits ?? 0).toLocaleString()}</span>
           </div>
           <div>
-            <span style={{ color: '#888' }}>score:   </span>
+            <span style={{ color: '#666' }}>score:   </span>
             <span style={{ color: '#ffffff' }}>{(u.totalScore ?? 0).toLocaleString()}</span>
           </div>
         </div>
       </div>
 
-      {/* Language */}
+      {/* Language — always available from SlimUser */}
       {u.topLanguage && (
         <div style={{ marginBottom: 14 }}>
-          <span style={{ color: '#888' }}>language: </span>
+          <span style={{ color: '#666' }}>language: </span>
           <span style={{
-            color: LANGUAGE_COLORS[u.topLanguage] ?? '#33ff33',
+            color: LANGUAGE_COLORS[u.topLanguage] ?? GREEN,
             fontWeight: 'bold',
           }}>
             {u.topLanguage}
@@ -311,27 +330,35 @@ function TerminalContent({ u, setFlyTarget, close }: {
         </div>
       )}
 
-      {/* Top repos */}
+      {/* Loading indicator for Phase 2 data */}
+      {loading && !full && (
+        <div style={{ marginBottom: 14, opacity: 0.5 }}>
+          <span style={{ color: GREEN }}>{'>'} Fetching extended profile</span>
+          <span style={{ animation: 'terminalBlink 1s step-end infinite' }}>...</span>
+        </div>
+      )}
+
+      {/* Top repos — Phase 2 */}
       {full?.topRepos && full.topRepos.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, animation: 'fadeIn 300ms ease' }}>
           <div style={{ color: '#ffffff', marginBottom: 6 }}>$ ls ~/repos --top</div>
           {full.topRepos.slice(0, 5).map((repo) => (
             <a key={repo.name} href={repo.url} target="_blank" rel="noopener noreferrer"
               style={{
                 display: 'block', padding: '6px 8px', marginBottom: 4,
-                textDecoration: 'none', color: '#33ff33',
+                textDecoration: 'none', color: GREEN,
                 fontFamily: MONO, fontSize: 12,
                 border: '1px solid transparent',
                 transition: 'border-color 150ms, background 150ms',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.background = 'rgba(51,255,51,0.04)'; }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = GREEN + '33'; e.currentTarget.style.background = `${GREEN}08`; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
             >
               <div>
                 <span style={{ color: '#5599ff' }}>drwxr-xr-x</span>{' '}
-                <span style={{ color: '#33ff33' }}>{repo.name}</span>
+                <span style={{ color: GREEN }}>{repo.name}</span>
               </div>
-              <div style={{ paddingLeft: 12, color: '#888', fontSize: 11 }}>
+              <div style={{ paddingLeft: 12, color: '#666', fontSize: 11 }}>
                 ⭐ {(repo.stars || 0).toLocaleString()} · {repo.language || '?'}
                 {repo.description && <span> · {repo.description.slice(0, 60)}</span>}
               </div>
@@ -341,7 +368,7 @@ function TerminalContent({ u, setFlyTarget, close }: {
       )}
 
       {/* Divider */}
-      <div style={{ color: '#333', marginBottom: 12 }}>{'─'.repeat(50)}</div>
+      <div style={{ color: GREEN + '22', marginBottom: 12 }}>{'─'.repeat(50)}</div>
 
       {/* GitHub link */}
       <a
@@ -350,21 +377,21 @@ function TerminalContent({ u, setFlyTarget, close }: {
         rel="noopener noreferrer"
         style={{
           display: 'block', textAlign: 'center',
-          background: 'rgba(51,255,51,0.1)',
-          border: '1px solid #33ff33',
-          color: '#33ff33', padding: '10px',
+          background: `${GREEN}11`,
+          border: `1px solid ${GREEN}44`,
+          color: GREEN, padding: '10px',
           fontSize: 13, textDecoration: 'none',
           fontFamily: MONO, marginBottom: 8,
-          transition: 'background 150ms',
+          transition: 'background 150ms, border-color 150ms',
         }}
-        onMouseEnter={e => e.currentTarget.style.background = 'rgba(51,255,51,0.2)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'rgba(51,255,51,0.1)'}
+        onMouseEnter={e => { e.currentTarget.style.background = `${GREEN}22`; e.currentTarget.style.borderColor = GREEN; }}
+        onMouseLeave={e => { e.currentTarget.style.background = `${GREEN}11`; e.currentTarget.style.borderColor = `${GREEN}44`; }}
       >
         $ open https://github.com/{u.login}
       </a>
 
       {/* Cursor blink */}
-      <div style={{ color: '#33ff33', marginTop: 8 }}>
+      <div style={{ color: GREEN, marginTop: 8 }}>
         <span>{'>'} </span>
         <span style={{ animation: 'terminalBlink 1s step-end infinite' }}>█</span>
       </div>

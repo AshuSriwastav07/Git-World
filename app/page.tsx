@@ -28,6 +28,7 @@ export default function Home() {
   const introStage = useCityStore(s => s.introStage);
 
   const enteredCity = useRef(false);
+  const cityReadyRef = useRef(false);
   const [dataReady, setDataReady] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
   const [showLoading, setShowLoading] = useState(true);
@@ -35,6 +36,7 @@ export default function Home() {
 
   // Canvas reports first frame rendered
   const handleCanvasReady = useCallback(() => {
+    cityReadyRef.current = true;
     setCanvasReady(true);
   }, []);
 
@@ -47,28 +49,31 @@ export default function Home() {
     async function bootstrap() {
       setLoadingProgress(5, 'Loading city from Supabase...');
       let loaded = 0;
+
+      // Milestone: city users fetch (0→35%)
       await loadSlimCity((batch, totalSoFar) => {
         if (cancelled) return;
         addUsers(batch);
         loaded = totalSoFar;
         setLoadingProgress(
-          Math.min(90, Math.round((totalSoFar / Math.max(totalSoFar + 500, 1000)) * 90)),
+          Math.min(35, Math.round((totalSoFar / Math.max(totalSoFar + 500, 1000)) * 35)),
           `Loaded ${totalSoFar.toLocaleString()} buildings...`
         );
       });
       if (cancelled) return;
 
-      setLoadingProgress(95, `${loaded.toLocaleString()} buildings placed!`);
+      // Milestone: data ready (35→60%)
+      setLoadingProgress(60, `${loaded.toLocaleString()} buildings placed!`);
       enteredCity.current = true;
       setLoading(false);
-      setLoadingProgress(100, 'City ready!');
       setDataReady(true);
 
       // Skip intro — go straight to done + menu
       setIntroStage('done');
       setActiveMode('menu');
 
-      // Loading screen fade is now triggered by canvasReady effect below
+      // Milestone: matrices ready (60→80%) — fires from CityScene onCreated
+      setLoadingProgress(80, 'Compiling shaders...');
 
       // Subscribe to Supabase realtime
       if (!cancelled) {
@@ -92,8 +97,19 @@ export default function Home() {
     }
 
     bootstrap();
+
+    // Hard timeout: force-close loading after 18 seconds
+    const hardTimeout = setTimeout(() => {
+      if (!cityReadyRef.current) {
+        console.warn('Hard timeout: forcing city ready after 18s');
+        cityReadyRef.current = true;
+        setCanvasReady(true);
+      }
+    }, 18000);
+
     return () => {
       cancelled = true;
+      clearTimeout(hardTimeout);
       if (stopStream) stopStream();
       if (realtimeChannel) realtimeChannel.unsubscribe();
     };
@@ -108,11 +124,11 @@ export default function Home() {
   // Three-state crossfade: only hide loading after canvas renders first frame
   useEffect(() => {
     if (canvasReady && showLoading) {
-      // Small delay ensures the frame is painted before fade starts
+      setLoadingProgress(100, 'City ready!');
       const t = setTimeout(() => setShowLoading(false), 100);
       return () => clearTimeout(t);
     }
-  }, [canvasReady, showLoading]);
+  }, [canvasReady, showLoading, setLoadingProgress]);
 
   // Mode menu selection handler
   const handleModeSelect = useCallback((mode: ActiveMode) => {

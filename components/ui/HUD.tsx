@@ -13,6 +13,7 @@ import { AirplaneHUD } from './AirplaneHUD';
 import { Controls } from './Controls';
 import { GitHubStars } from './GitHubStars';
 import { JoinToast } from './JoinToast';
+import { LeaderboardPanel } from './LeaderboardPanel';
 
 const FONT = "'Press Start 2P', monospace";
 
@@ -44,6 +45,7 @@ export function HUD() {
       <RankChart />
       <AirplaneHUD />
       <JoinToast />
+      <LeaderboardPanel />
 
       {/* ── Minimal 36px top bar ── */}
       {showUI && (

@@ -6,6 +6,7 @@ import { useFrame, ThreeEvent } from '@react-three/fiber';
 import { useCityStore } from '@/lib/cityStore';
 import { slotToWorld, getBuildingDimensions, getGroundSize, isInsidePark } from '@/lib/cityLayout';
 import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
+import { preloadProfile } from '@/components/ui/ProfileModal';
 
 const MAX_BUILDINGS = 8000;
 
@@ -103,15 +104,47 @@ function createGrassTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-/* ── Street lamp ── */
+/* ── Street lamp — no React state subscription, materials updated imperatively ── */
+const _lampEmissive = new THREE.Color();
+const LAMP_DAY_EMISSIVE = new THREE.Color('#000000');
+const LAMP_NIGHT_EMISSIVE = new THREE.Color('#ffdd88');
+
+// Shared lamp materials — created once, updated in CityGrid useFrame
+let _sharedLampMat: THREE.MeshLambertMaterial | null = null;
+let _sharedGlowMat: THREE.MeshBasicMaterial | null = null;
+
+function getSharedLampMat() {
+  if (!_sharedLampMat) {
+    _sharedLampMat = new THREE.MeshLambertMaterial({
+      color: '#ffdd88',
+      emissive: new THREE.Color('#000000'),
+      emissiveIntensity: 0,
+    });
+  }
+  return _sharedLampMat;
+}
+
+function getSharedGlowMat() {
+  if (!_sharedGlowMat) {
+    _sharedGlowMat = new THREE.MeshBasicMaterial({
+      color: '#ffcc66',
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+  }
+  return _sharedGlowMat;
+}
+
 function StreetLight({ position }: { position: [number, number, number] }) {
-  const isNight = useCityStore((s) => s.isNight);
+  const lampMat = useMemo(getSharedLampMat, []);
+  const glowMat = useMemo(getSharedGlowMat, []);
   return (
     <group position={position}>
       <mesh position={[0, 2, 0]}><boxGeometry args={[0.25, 4, 0.25]} /><meshLambertMaterial color="#555555" /></mesh>
       <mesh position={[0.5, 4, 0]}><boxGeometry args={[1, 0.2, 0.2]} /><meshLambertMaterial color="#555555" /></mesh>
-      <mesh position={[1, 3.7, 0]}><boxGeometry args={[0.6, 0.6, 0.6]} /><meshLambertMaterial color="#ffdd88" emissive={isNight ? '#ffdd88' : '#000000'} emissiveIntensity={isNight ? 2.0 : 0} /></mesh>
-      {isNight && (<mesh position={[1, 3.7, 0]}><sphereGeometry args={[1.8, 8, 8]} /><meshBasicMaterial color="#ffcc66" transparent opacity={0.08} depthWrite={false} /></mesh>)}
+      <mesh position={[1, 3.7, 0]}><boxGeometry args={[0.6, 0.6, 0.6]} /><primitive object={lampMat} attach="material" /></mesh>
+      <mesh position={[1, 3.7, 0]}><sphereGeometry args={[1.8, 8, 8]} /><primitive object={glowMat} attach="material" /></mesh>
     </group>
   );
 }
@@ -372,6 +405,40 @@ export function CityGrid() {
   const RISE_DURATION = 7000; // 7 seconds for all buildings to rise
   const MAX_DIST_DELAY = 0.6;  // fraction of rise time used for distance-based delay
   const riseDummy = useMemo(() => new THREE.Object3D(), []);
+  const groundRef = useRef<THREE.MeshLambertMaterial>(null);
+  const dayFactorRef = useRef(useCityStore.getState().isNight ? 0 : 1);
+
+  /* ── Imperative day/night transitions for street lamps + ground (zero re-renders) ── */
+  useFrame((_state, delta) => {
+    const dt = Math.min(delta, 0.05);
+    const isNight = useCityStore.getState().isNight;
+    const targetDay = isNight ? 0 : 1;
+    dayFactorRef.current = THREE.MathUtils.lerp(dayFactorRef.current, targetDay, dt * 0.8);
+    const f = dayFactorRef.current;
+    const nightF = 1 - f;
+
+    // Lamp material
+    const lamp = getSharedLampMat();
+    _lampEmissive.copy(LAMP_DAY_EMISSIVE).lerp(LAMP_NIGHT_EMISSIVE, nightF);
+    lamp.emissive.copy(_lampEmissive);
+    lamp.emissiveIntensity = nightF * 2.0;
+
+    // Glow material
+    const glow = getSharedGlowMat();
+    glow.opacity = nightF * 0.08;
+
+    // Ground color lerp (day: grass green, night: darker)
+    if (groundRef.current) {
+      const g = groundRef.current;
+      if (!g.userData._dayColor) {
+        g.userData._dayColor = new THREE.Color('#ffffff');
+        g.userData._nightColor = new THREE.Color('#1a2a1a');
+        g.userData._current = new THREE.Color('#ffffff');
+      }
+      (g.userData._current as THREE.Color).copy(g.userData._nightColor).lerp(g.userData._dayColor, f);
+      g.color.copy(g.userData._current);
+    }
+  });
 
   useFrame(() => {
     if (introStage !== 'cinematic' && introStage !== 'loading') return;
@@ -463,6 +530,19 @@ export function CityGrid() {
     }
   }, [selectUser, introStage, isRealClick]);
 
+  /* ── Hover preload: pre-fetch profile data on hover ── */
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (e.instanceId === undefined) return;
+    const login = loginsByInstance.current[e.instanceId];
+    if (!login) return;
+    hoverTimer.current = setTimeout(() => preloadProfile(login), 300);
+  }, []);
+  const handlePointerOut = useCallback(() => {
+    if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; }
+  }, []);
+
   /* ── Ground ── */
   const groundSize = getGroundSize(sortedLogins.length);
   const grassTex = useMemo(() => {
@@ -489,7 +569,7 @@ export function CityGrid() {
       {/* Ground */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow={false}>
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshLambertMaterial map={grassTex ?? undefined} color={grassTex ? '#ffffff' : '#3a8c28'} />
+        <meshLambertMaterial ref={groundRef} map={grassTex ?? undefined} color={grassTex ? '#ffffff' : '#3a8c28'} />
       </mesh>
 
       {/* Street Lights */}
@@ -501,6 +581,8 @@ export function CityGrid() {
         args={[boxGeo, dayBodyMat, MAX_BUILDINGS]}
         onPointerDown={handlePointerDown}
         onClick={handleClick}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
         frustumCulled={false}
       />
 

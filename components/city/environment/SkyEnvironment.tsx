@@ -141,10 +141,12 @@ const CLOUD_CONFIGS = [
    COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
 
-export function SkyEnvironment() {
-  const isNight = useCityStore(s => s.isNight);
-  const isDay = !isNight;
+// Pre-allocated color targets for fog lerp (avoid allocations in useFrame)
+const FOG_DAY = new THREE.Color('#c9e8ff');
+const FOG_NIGHT = new THREE.Color('#0d0818');
+const _fogTarget = new THREE.Color();
 
+export function SkyEnvironment() {
   // ── Refs (pre-allocated, reused per-frame) ──
   const skyMatRef = useRef<THREE.ShaderMaterial>(null!);
   const sunOuterRef = useRef<THREE.Mesh>(null!);
@@ -155,16 +157,23 @@ export function SkyEnvironment() {
   const auroraMatRef = useRef<THREE.ShaderMaterial>(null!);
   const auroraMatRef2 = useRef<THREE.ShaderMaterial>(null!);
   const cloudRefs = useRef<(THREE.Group | null)[]>([]);
+  const sunGroupRef = useRef<THREE.Group>(null!);
+  const cloudGroupRef = useRef<THREE.Group>(null!);
+  const moonGroupRef = useRef<THREE.Group>(null!);
+  const starsGroupRef = useRef<THREE.Group>(null!);
+  const auroraGroupRef = useRef<THREE.Group>(null!);
   const elapsedRef = useRef(0);
+  // Smooth transition factor: 0 = night, 1 = day
+  const dayFactorRef = useRef(useCityStore.getState().isNight ? 0 : 1);
 
   // ── Sky dome material ──
   const skyMat = useMemo(() => new THREE.ShaderMaterial({
     vertexShader: SKY_VERT,
     fragmentShader: SKY_FRAG,
-    uniforms: { uIsDay: { value: isDay ? 1.0 : 0.0 } },
+    uniforms: { uIsDay: { value: dayFactorRef.current } },
     side: THREE.BackSide,
     depthWrite: false,
-  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  }), []);
 
   // ── Star geometry ──
   const starGeo = useMemo(() => {
@@ -219,63 +228,98 @@ export function SkyEnvironment() {
     depthWrite: false,
   }), []);
 
-  // ── useFrame: all sky animation ──
-  useFrame((_state, delta) => {
+  // ── useFrame: all sky animation — zero React state reads, fully imperative ──
+  useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
     elapsedRef.current += dt;
     const e = elapsedRef.current;
 
+    // Read store directly (no React subscription → no re-render)
+    const isNight = useCityStore.getState().isNight;
+    const targetDay = isNight ? 0 : 1;
+
+    // Smooth transition factor
+    dayFactorRef.current = THREE.MathUtils.lerp(dayFactorRef.current, targetDay, dt * 0.8);
+    const f = dayFactorRef.current; // 0=night, 1=day
+
     // Sky dome transition
     if (skyMatRef.current) {
-      skyMatRef.current.uniforms.uIsDay.value = THREE.MathUtils.lerp(
-        skyMatRef.current.uniforms.uIsDay.value, isDay ? 1.0 : 0.0, dt * 0.8
-      );
+      skyMatRef.current.uniforms.uIsDay.value = f;
     }
 
-    // Sun pulse (day)
-    if (isDay && sunOuterRef.current) {
+    // Sun group visibility (fade via scale for smooth transition)
+    if (sunGroupRef.current) {
+      const sunScale = f; // 0→invisible, 1→full
+      sunGroupRef.current.visible = f > 0.01;
+      sunGroupRef.current.scale.setScalar(sunScale);
+    }
+
+    // Sun pulse
+    if (f > 0.5 && sunOuterRef.current) {
       const s = 1.0 + Math.sin(e * 0.4) * 0.03;
       sunOuterRef.current.scale.setScalar(s);
     }
 
-    // Cloud drift (day)
-    if (isDay) {
-      for (let i = 0; i < cloudRefs.current.length; i++) {
-        const c = cloudRefs.current[i];
-        if (!c) continue;
-        c.position.x += CLOUD_CONFIGS[i].speed * CLOUD_CONFIGS[i].dir * dt;
-        if (c.position.x > 650) c.position.x = -650;
-        if (c.position.x < -650) c.position.x = 650;
+    // Cloud group visibility + drift
+    if (cloudGroupRef.current) {
+      cloudGroupRef.current.visible = f > 0.01;
+      if (f > 0.01) {
+        cloudMat.opacity = 0.88 * f;
+        for (let i = 0; i < cloudRefs.current.length; i++) {
+          const c = cloudRefs.current[i];
+          if (!c) continue;
+          c.position.x += CLOUD_CONFIGS[i].speed * CLOUD_CONFIGS[i].dir * dt;
+          if (c.position.x > 650) c.position.x = -650;
+          if (c.position.x < -650) c.position.x = 650;
+        }
       }
     }
 
-    // Aurora time (night)
-    if (!isDay) {
-      if (auroraMatRef.current) auroraMatRef.current.uniforms.uTime.value = e;
-      if (auroraMatRef2.current) auroraMatRef2.current.uniforms.uTime.value = e + 2.5;
+    // Stars visibility
+    if (starsRef.current) {
+      const nightF = 1 - f;
+      starsRef.current.visible = nightF > 0.01;
+      if (nightF > 0.01) {
+        (starsRef.current.material as THREE.PointsMaterial).opacity =
+          (0.85 + Math.sin(e * 0.3) * 0.05) * nightF;
+      }
     }
 
-    // Star twinkle (night)
-    if (!isDay && starsRef.current) {
-      (starsRef.current.material as THREE.PointsMaterial).opacity =
-        0.85 + Math.sin(e * 0.3) * 0.05;
+    // Moon group visibility
+    if (moonGroupRef.current) {
+      const nightF = 1 - f;
+      moonGroupRef.current.visible = nightF > 0.01;
+      moonGroupRef.current.scale.setScalar(nightF > 0.01 ? 1 : 0);
+    }
+
+    // Aurora
+    if (auroraGroupRef.current) {
+      const nightF = 1 - f;
+      auroraGroupRef.current.visible = nightF > 0.01;
+      if (nightF > 0.01) {
+        if (auroraMatRef.current) auroraMatRef.current.uniforms.uTime.value = e;
+        if (auroraMatRef2.current) auroraMatRef2.current.uniforms.uTime.value = e + 2.5;
+      }
     }
 
     // Lighting transition
     if (ambLightRef.current) {
-      ambLightRef.current.intensity = THREE.MathUtils.lerp(
-        ambLightRef.current.intensity, isDay ? 0.7 : 0.4, dt * 0.6
-      );
+      ambLightRef.current.intensity = THREE.MathUtils.lerp(0.4, 0.7, f);
     }
     if (sunLightRef.current) {
-      sunLightRef.current.intensity = THREE.MathUtils.lerp(
-        sunLightRef.current.intensity, isDay ? 1.8 : 0.0, dt * 0.6
-      );
+      sunLightRef.current.intensity = THREE.MathUtils.lerp(0.0, 1.8, f);
     }
     if (moonLightRef.current) {
-      moonLightRef.current.intensity = THREE.MathUtils.lerp(
-        moonLightRef.current.intensity, isDay ? 0.0 : 0.3, dt * 0.6
-      );
+      moonLightRef.current.intensity = THREE.MathUtils.lerp(0.3, 0.0, f);
+    }
+
+    // Fog — imperative color + distance lerp (no JSX swap)
+    const fog = state.scene.fog as THREE.Fog | null;
+    if (fog) {
+      _fogTarget.copy(FOG_NIGHT).lerp(FOG_DAY, f);
+      fog.color.copy(_fogTarget);
+      fog.near = THREE.MathUtils.lerp(200, 300, f);
+      fog.far = THREE.MathUtils.lerp(800, 1000, f);
     }
   });
 
@@ -287,15 +331,18 @@ export function SkyEnvironment() {
         <primitive object={skyMat} ref={skyMatRef} attach="material" />
       </mesh>
 
+      {/* ═══ FOG — single instance, lerped imperatively in useFrame ═══ */}
+      <fog attach="fog" args={['#0d0818', 200, 800]} />
+
       {/* ═══ LIGHTING ═══ */}
-      <ambientLight ref={ambLightRef} color="#ffffff" intensity={isDay ? 0.7 : 0.4} />
-      <directionalLight ref={sunLightRef} color="#fff4c2" intensity={isDay ? 1.8 : 0.0}
+      <ambientLight ref={ambLightRef} color="#ffffff" intensity={0.4} />
+      <directionalLight ref={sunLightRef} color="#fff4c2" intensity={0.0}
         position={[500, 200, -100]} />
-      <directionalLight ref={moonLightRef} color="#8aa8d0" intensity={isDay ? 0.0 : 0.3}
+      <directionalLight ref={moonLightRef} color="#8aa8d0" intensity={0.3}
         position={[-400, 280, -200]} />
 
-      {/* ═══ SUN (day) ═══ */}
-      <group position={[500, 200, -100]} visible={isDay}>
+      {/* ═══ SUN (visibility managed imperatively) ═══ */}
+      <group ref={sunGroupRef} position={[500, 200, -100]}>
         {/* Outer corona */}
         <mesh ref={sunOuterRef}>
           <sphereGeometry args={[22, 12, 12]} />
@@ -331,8 +378,8 @@ export function SkyEnvironment() {
         </mesh>
       </group>
 
-      {/* ═══ CLOUDS (day) ═══ */}
-      <group visible={isDay}>
+      {/* ═══ CLOUDS (visibility managed imperatively) ═══ */}
+      <group ref={cloudGroupRef}>
         {CLOUD_CONFIGS.map((cfg, i) => (
           <group
             key={i}
@@ -347,8 +394,8 @@ export function SkyEnvironment() {
         ))}
       </group>
 
-      {/* ═══ STARS (night) ═══ */}
-      <points ref={starsRef} geometry={starGeo} visible={!isDay}>
+      {/* ═══ STARS (visibility managed imperatively) ═══ */}
+      <points ref={starsRef} geometry={starGeo}>
         <pointsMaterial
           color="#ffffff"
           size={1.5}
@@ -359,8 +406,8 @@ export function SkyEnvironment() {
         />
       </points>
 
-      {/* ═══ MOON (night) ═══ */}
-      <group position={[-400, 280, -200]} visible={!isDay}>
+      {/* ═══ MOON (visibility managed imperatively) ═══ */}
+      <group ref={moonGroupRef} position={[-400, 280, -200]}>
         {/* Outer halo */}
         <mesh>
           <sphereGeometry args={[28, 12, 12]} />
@@ -378,8 +425,8 @@ export function SkyEnvironment() {
         </mesh>
       </group>
 
-      {/* ═══ AURORA BOREALIS (night) ═══ */}
-      <group visible={!isDay}>
+      {/* ═══ AURORA BOREALIS (visibility managed imperatively) ═══ */}
+      <group ref={auroraGroupRef}>
         <mesh position={[0, 350, -600]} rotation={[-0.2, 0, 0]}>
           <planeGeometry args={[1400, 400, 60, 20]} />
           <primitive object={auroraMat1} ref={auroraMatRef} attach="material" />
@@ -389,13 +436,6 @@ export function SkyEnvironment() {
           <primitive object={auroraMat2} ref={auroraMatRef2} attach="material" />
         </mesh>
       </group>
-
-      {/* ═══ FOG ═══ */}
-      {isDay ? (
-        <fog attach="fog" args={['#c9e8ff', 300, 1000]} />
-      ) : (
-        <fog attach="fog" args={['#0d0818', 200, 800]} />
-      )}
     </group>
   );
 }

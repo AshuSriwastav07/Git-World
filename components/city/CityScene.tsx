@@ -4,8 +4,9 @@
 import { Canvas, useFrame } from '@react-three/fiber';
 import { AdaptiveDpr } from '@react-three/drei';
 import { SkyEnvironment } from './environment/SkyEnvironment';
-import { Suspense, useRef, useCallback, useEffect } from 'react';
+import { Suspense, useRef, useCallback } from 'react';
 import { useCityStore } from '@/lib/cityStore';
+import type { RootState } from '@react-three/fiber';
 import { CityGrid } from './CityGrid';
 import { TechPark } from './TechPark';
 import { AirplaneMode } from './airplane/AirplaneMode';
@@ -113,6 +114,10 @@ export default function CityScene({ onReady }: { onReady?: () => void }) {
         shadows={false}
         performance={{ min: 0.3 }}
         onPointerMissed={handlePointerMissed}
+        onCreated={(state: RootState) => {
+          // Pre-compile all shaders to avoid first-frame stutter
+          state.gl.compile(state.scene, state.camera);
+        }}
       >
         <Suspense fallback={null}>
           <SceneContent onReady={onReady} />
