@@ -9,12 +9,10 @@ import { RankChart } from './RankChart';
 import { MiniMap } from './MiniMap';
 import { TopFiveWidget } from './TopFiveWidget';
 import { LiveFeed } from './LiveFeed';
-import { LoadingScreen } from './LoadingScreen';
 import { AirplaneHUD } from './AirplaneHUD';
 import { Controls } from './Controls';
 import { GitHubStars } from './GitHubStars';
 import { JoinToast } from './JoinToast';
-import { IntroButtons } from './IntroButtons';
 import { GitWorldLogo } from './GitWorldLogo';
 
 const FONT = "'Press Start 2P', monospace";
@@ -34,9 +32,7 @@ export function HUD() {
 
   return (
     <>
-      {/* Intro overlays — always mounted, self-hide when not active */}
-      <IntroButtons />
-      <LoadingScreen />
+      {/* Always-mounted overlays */}
       <ProfileModal />
       <RepoProfilePanel />
       <RankChart />

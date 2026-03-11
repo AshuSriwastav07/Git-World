@@ -326,8 +326,8 @@ export async function POST() {
 
       // Delay between companies to avoid GitHub rate limiting
       if (ci > 0) {
-        log.push(`Phase 1: Waiting 5s before fetching ${company}...`);
-        await new Promise(r => setTimeout(r, 5000));
+        log.push(`Phase 1: Waiting 2s before fetching ${company}...`);
+        await new Promise(r => setTimeout(r, 2000));
       }
 
       const seenLogins = new Set<string>();
@@ -336,7 +336,7 @@ export async function POST() {
       // Step 1: Try each org in the list
       for (let oi = 0; oi < config.orgs.length; oi++) {
         const orgName = config.orgs[oi];
-        if (oi > 0) await new Promise(r => setTimeout(r, 1000));
+        if (oi > 0) await new Promise(r => setTimeout(r, 500));
         const orgMembers = await fetchOrgMembers(orgName);
         log.push(`Phase 1: ${company} — org '${orgName}' returned ${orgMembers.length} members`);
         for (const m of orgMembers) {
@@ -371,14 +371,14 @@ export async function POST() {
       // Filter: type=User, not a bot, cap at 50 candidates
       const validMembers = allMembers
         .filter(m => m.member.type === 'User' && !isBot(m.member.login))
-        .slice(0, 50);
-      log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter (capped at 50)`);
+        .slice(0, 40);
+      log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter (capped at 40)`);
 
       // Step A: Quick-score in batches of 5 (1 API call each, 1s delay between batches)
       const quickScored: { login: string; qs: QuickScore; source: string }[] = [];
 
       for (let i = 0; i < validMembers.length; i += 5) {
-        if (i > 0) await new Promise(r => setTimeout(r, 1000));
+        if (i > 0) await new Promise(r => setTimeout(r, 400));
         const batch = validMembers.slice(i, i + 5);
         const results = await Promise.all(batch.map(m => quickScoreUser(m.member.login)));
 
@@ -401,16 +401,16 @@ export async function POST() {
         }
       }
 
-      // Take top 35 by quick score for full profile fetch
+      // Take top 25 by quick score for full profile fetch
       quickScored.sort((a, b) => b.qs.score - a.qs.score);
-      const topCandidates = quickScored.slice(0, 35);
+      const topCandidates = quickScored.slice(0, 25);
       log.push(`Phase 1: ${company} — ${quickScored.length} quick-scored, top ${topCandidates.length} selected for full profile`);
 
       // Step B: Full profile fetch in batches of 5 (repos + events, 2s delay between batches)
       const scored: { login: string; profile: ProfileData; score: number; source: string }[] = [];
 
       for (let i = 0; i < topCandidates.length; i += 5) {
-        if (i > 0) await new Promise(r => setTimeout(r, 2000));
+        if (i > 0) await new Promise(r => setTimeout(r, 800));
         const batch = topCandidates.slice(i, i + 5);
         const profiles = await Promise.all(batch.map(c => fetchProfile(c.login)));
 

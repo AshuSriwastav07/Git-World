@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { HUD } from '@/components/ui/HUD';
-import { CinematicIntro } from '@/components/intro/CinematicIntro';
+import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ModeMenu } from '@/components/ui/ModeMenu';
 import { loadSlimCity, subscribeToNewUsers } from '@/lib/supabaseDb';
 import { startDiscoveryStream } from '@/lib/cityStream';
@@ -21,7 +21,6 @@ export default function Home() {
   const setLoading = useCityStore(s => s.setLoading);
   const setLoadingProgress = useCityStore(s => s.setLoadingProgress);
   const setIntroStage = useCityStore(s => s.setIntroStage);
-  const setIntroStartTime = useCityStore(s => s.setIntroStartTime);
   const setActiveMode = useCityStore(s => s.setActiveMode);
   const setFlightMode = useCityStore(s => s.setFlightMode);
   const setRankChartOpen = useCityStore(s => s.setRankChartOpen);
@@ -29,11 +28,11 @@ export default function Home() {
   const introStage = useCityStore(s => s.introStage);
 
   const enteredCity = useRef(false);
-  const [showCanvas, setShowCanvas] = useState(false);
   const [dataReady, setDataReady] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
+  const [showLoading, setShowLoading] = useState(true);
+  const [loadingDismissed, setLoadingDismissed] = useState(false);
 
-  // Phase 1: Load data in background immediately
+  // Load data, then mount canvas, then show menu
   useEffect(() => {
     let cancelled = false;
     let stopStream: (() => void) | null = null;
@@ -55,9 +54,18 @@ export default function Home() {
 
       setLoadingProgress(95, `${loaded.toLocaleString()} buildings placed!`);
       enteredCity.current = true;
-      setLoadingProgress(100, 'City ready!');
       setLoading(false);
+      setLoadingProgress(100, 'City ready!');
       setDataReady(true);
+
+      // Skip intro — go straight to done + menu
+      setIntroStage('done');
+      setActiveMode('menu');
+
+      // Small delay then hide loading screen
+      setTimeout(() => {
+        if (!cancelled) setShowLoading(false);
+      }, 600);
 
       // Subscribe to Supabase realtime
       if (!cancelled) {
@@ -89,25 +97,10 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // CinematicIntro signals: mount Canvas at ~15s
-  const handleRequestCanvas = useCallback(() => {
-    setShowCanvas(true);
-    // Set to 'cinematic' so CityGrid builds at scaleY=0 (buildings hidden)
-    setIntroStage('cinematic');
-    setIntroStartTime(0); // Don't start rise yet
-  }, [setIntroStage, setIntroStartTime]);
-
-  // CinematicIntro signals: intro complete at ~25s — buildings rise now
-  const handleIntroComplete = useCallback(() => {
-    setIntroStage('cinematic');
-    setIntroStartTime(Date.now());
-    setTimeout(() => setShowIntro(false), 1200);
-    // After rise animation (7s), mark done and show mode menu
-    setTimeout(() => {
-      setIntroStage('done');
-      setActiveMode('menu');
-    }, 7500);
-  }, [setIntroStage, setIntroStartTime, setActiveMode]);
+  // Callback when loading screen fade-out animation completes
+  const handleLoadingFadeComplete = useCallback(() => {
+    setLoadingDismissed(true);
+  }, []);
 
   // Mode menu selection handler
   const handleModeSelect = useCallback((mode: ActiveMode) => {
@@ -117,29 +110,27 @@ export default function Home() {
     } else if (mode === 'leaderboard') {
       setRankChartOpen(true);
     }
-    // 'explore', 'trending', 'search' — just dismiss menu, HUD appears
   }, [setActiveMode, setFlightMode, setRankChartOpen]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      {/* Canvas mounts at second 60 behind intro overlay */}
-      {showCanvas && <CityScene />}
+      {/* Canvas mounts once data is ready */}
+      {dataReady && <CityScene />}
 
       {/* HUD shows after intro is done */}
       <HUD />
 
-      {/* Mode selection menu — visible when activeMode is 'menu' and intro is done */}
+      {/* Mode selection menu */}
       <ModeMenu
         visible={introStage === 'done' && activeMode === 'menu'}
         onSelect={handleModeSelect}
       />
 
-      {/* Cinematic intro overlay — on top of everything */}
-      {showIntro && (
-        <CinematicIntro
-          onRequestCanvas={handleRequestCanvas}
-          onComplete={handleIntroComplete}
-          dataReady={dataReady}
+      {/* Loading screen — on top of everything */}
+      {!loadingDismissed && (
+        <LoadingScreen
+          visible={showLoading}
+          onFadeComplete={handleLoadingFadeComplete}
         />
       )}
     </div>
