@@ -54,10 +54,10 @@ const COMPANY_CONFIG: Record<string, CompanySource> = {
     searchTerms: ['Microsoft'],
     profileCompanyMatch: ['microsoft'],
   },
-  tesla: {
-    orgs: ['teslamotors'],
-    searchTerms: ['Tesla'],
-    profileCompanyMatch: ['tesla'],
+  openai: {
+    orgs: ['openai'],
+    searchTerms: ['OpenAI'],
+    profileCompanyMatch: ['openai'],
   },
   netflix: {
     orgs: ['Netflix'],

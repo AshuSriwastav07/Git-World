@@ -13,7 +13,7 @@ const SV_COMPANIES = [
   { name: 'Meta', color: '#0668e1' },
   { name: 'Amazon', color: '#ff9900' },
   { name: 'Microsoft', color: '#00a4ef' },
-  { name: 'Tesla', color: '#cc0000' },
+  { name: 'OpenAI', color: '#10a37f' },
   { name: 'Netflix', color: '#e50914' },
 ];
 

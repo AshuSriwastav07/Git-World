@@ -19,7 +19,7 @@ import { MetaQuadrant } from './svpark/MetaQuadrant';
 import { CompanySector } from './svpark/CompanySector';
 import { AmazonBuilding } from './svpark/buildings/AmazonBuilding';
 import { MicrosoftBuilding } from './svpark/buildings/MicrosoftBuilding';
-import { TeslaBuilding } from './svpark/buildings/TeslaBuilding';
+import { OpenAIBuilding } from './svpark/buildings/OpenAIBuilding';
 import { NetflixBuilding } from './svpark/buildings/NetflixBuilding';
 
 export interface SVContributor {
@@ -34,12 +34,12 @@ export interface SVContributor {
   publicRepos: number;
 }
 
-type CompanyKey = 'apple' | 'google' | 'nvidia' | 'meta' | 'amazon' | 'microsoft' | 'tesla' | 'netflix';
+type CompanyKey = 'apple' | 'google' | 'nvidia' | 'meta' | 'amazon' | 'microsoft' | 'openai' | 'netflix';
 
 function useFetchAllSVData() {
   const [companies, setCompanies] = useState<Record<CompanyKey, SVContributor[]>>({
     apple: [], google: [], nvidia: [], meta: [],
-    amazon: [], microsoft: [], tesla: [], netflix: [],
+    amazon: [], microsoft: [], openai: [], netflix: [],
   });
   const [languageDevs, setLanguageDevs] = useState<Record<string, LanguageDev[]>>({});
 
@@ -252,7 +252,7 @@ const COMPANY_POSITIONS: Record<CompanyKey, [number, number, number]> = {
   meta:   [75, 0, -10],
   amazon:    [-75, 0, -75],
   microsoft: [-25, 0, -75],
-  tesla:     [25, 0, -75],
+  openai:    [25, 0, -75],
   netflix:   [75, 0, -75],
 };
 
@@ -354,8 +354,8 @@ export function SiliconValleyPark() {
         position={[COMPANY_POSITIONS.amazon[0], 4, COMPANY_POSITIONS.amazon[2] + 22]} />
       <ParkBanner text="MICROSOFT" bgColor="#f3f3f3" textColor="#00a4ef"
         position={[COMPANY_POSITIONS.microsoft[0], 4, COMPANY_POSITIONS.microsoft[2] + 22]} />
-      <ParkBanner text="TESLA" bgColor="#1a1a1f" textColor="#E31937"
-        position={[COMPANY_POSITIONS.tesla[0], 4, COMPANY_POSITIONS.tesla[2] + 22]} />
+      <ParkBanner text="OPENAI" bgColor="#ffffff" textColor="#10a37f"
+        position={[COMPANY_POSITIONS.openai[0], 4, COMPANY_POSITIONS.openai[2] + 22]} />
       <ParkBanner text="NETFLIX" bgColor="#221f1f" textColor="#E50914"
         position={[COMPANY_POSITIONS.netflix[0], 4, COMPANY_POSITIONS.netflix[2] + 22]} />
 
@@ -386,10 +386,10 @@ export function SiliconValleyPark() {
           developers={companies.microsoft}
         />
       </group>
-      <group position={COMPANY_POSITIONS.tesla}>
+      <group position={COMPANY_POSITIONS.openai}>
         <CompanySector
-          config={{ name: 'Tesla', brandColor: '#E31937', bgColor: '#1a1a1f', building: <TeslaBuilding position={[0, 0, 0]} scale={1} /> }}
-          developers={companies.tesla}
+          config={{ name: 'OpenAI', brandColor: '#10a37f', bgColor: '#ffffff', building: <OpenAIBuilding position={[0, 0, 0]} scale={1} /> }}
+          developers={companies.openai}
         />
       </group>
       <group position={COMPANY_POSITIONS.netflix}>
@@ -494,7 +494,7 @@ export function SiliconValleyPark() {
           <pointLight position={COMPANY_POSITIONS.meta} color="#0082fb" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.amazon} color="#FF9900" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.microsoft} color="#00a4ef" intensity={1.5} distance={40} />
-          <pointLight position={COMPANY_POSITIONS.tesla} color="#E31937" intensity={1.5} distance={40} />
+          <pointLight position={COMPANY_POSITIONS.openai} color="#10a37f" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.netflix} color="#E50914" intensity={1.5} distance={40} />
           {/* Boulevard south glow */}
           <pointLight position={[0, 8, 60]} color="#ffe8b0" intensity={2} distance={60} />
