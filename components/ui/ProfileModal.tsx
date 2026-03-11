@@ -1,4 +1,4 @@
-// ProfileModal — SIDE PANEL (desktop) / BOTTOM SHEET (mobile)
+// ProfileModal — CMD/Terminal style centered modal
 'use client';
 
 import { useCityStore } from '@/lib/cityStore';
@@ -8,56 +8,33 @@ import { slotToWorld, getBuildingDimensions, getTier } from '@/lib/cityLayout';
 import { loadUserProfile } from '@/lib/supabaseDb';
 import type { SlimUser, CityUser } from '@/lib/supabaseDb';
 
-const FONT = "'Press Start 2P', monospace";
-const SWIPE_THRESHOLD = 80;
+const MONO = "'Courier New', 'Consolas', 'Monaco', monospace";
 
-function useIsMobile() {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const mql = window.matchMedia('(max-width: 768px)');
-    setMobile(mql.matches);
-    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
-  }, []);
-  return mobile;
+// Profile cache — avoids re-fetching
+const profileCache = new Map<string, CityUser>();
+
+/** Terminal skeleton while loading */
+function TerminalSkeleton() {
+  return (
+    <div style={{ padding: '16px 20px', fontFamily: MONO, fontSize: 13, color: '#33ff33' }}>
+      <div style={{ marginBottom: 8 }}>{'>'} Loading profile...</div>
+      <div style={{ opacity: 0.4 }}>{'>'} Fetching data from GitHub...</div>
+      <div style={{ opacity: 0.3 }}>{'>'} Please wait...</div>
+      <div style={{ marginTop: 16 }}>
+        <span style={{ display: 'inline-block', width: '100%', height: 12, background: 'rgba(51,255,51,0.08)', animation: 'terminalBlink 1s infinite' }} />
+      </div>
+    </div>
+  );
 }
 
 export function ProfileModal() {
   const selectedUser   = useCityStore((s) => s.selectedUser);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
   const setFlyTarget   = useCityStore((s) => s.setFlyTarget);
-  const users          = useCityStore((s) => s.users);
   const [fullProfile, setFullProfile] = useState<CityUser | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
-  const isMobile = useIsMobile();
-  const panelRef = useRef<HTMLDivElement>(null);
-  const touchStartY = useRef(0);
-  const touchDelta = useRef(0);
 
   const close = useCallback(() => setSelectedUser(null), [setSelectedUser]);
-
-  // Swipe-to-close (mobile: swipe down)
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-    touchDelta.current = 0;
-  }, []);
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    const dy = e.touches[0].clientY - touchStartY.current;
-    touchDelta.current = Math.max(0, dy);
-    if (panelRef.current && isMobile) {
-      panelRef.current.style.transform = `translateY(${touchDelta.current}px)`;
-      panelRef.current.style.transition = 'none';
-    }
-  }, [isMobile]);
-  const handleTouchEnd = useCallback(() => {
-    if (panelRef.current) {
-      panelRef.current.style.transition = 'transform 0.35s cubic-bezier(0.4,0,0.2,1)';
-      panelRef.current.style.transform = '';
-    }
-    if (isMobile && touchDelta.current > SWIPE_THRESHOLD) close();
-    touchDelta.current = 0;
-  }, [isMobile, close]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -67,17 +44,28 @@ export function ProfileModal() {
     return () => window.removeEventListener('keydown', handler);
   }, [close]);
 
-  // Lazy load full profile
+  // Lazy load full profile with cache
   useEffect(() => {
     if (!selectedUser) { setFullProfile(null); return; }
+
+    const login = selectedUser.login;
+    const cached = profileCache.get(login.toLowerCase());
+    if (cached) {
+      setFullProfile(cached);
+      setLoadingProfile(false);
+      return;
+    }
 
     let cancelled = false;
     const hydrate = async () => {
       setLoadingProfile(true);
       try {
-        const stored = await loadUserProfile(selectedUser.login);
+        const stored = await loadUserProfile(login);
         if (cancelled) return;
-        if (stored) setFullProfile(stored);
+        if (stored) {
+          profileCache.set(login.toLowerCase(), stored);
+          setFullProfile(stored);
+        }
       } catch (error) {
         if (!cancelled) console.error('Profile hydrate error:', error);
       } finally {
@@ -87,222 +75,299 @@ export function ProfileModal() {
 
     hydrate();
     return () => { cancelled = true; };
-  }, [selectedUser?.login]);
+  }, [selectedUser?.login]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isOpen = !!selectedUser;
   const u = fullProfile ?? selectedUser;
+  const showSkeleton = isOpen && loadingProfile && !fullProfile;
 
-  // Get stats for scaling bars
-  const allUsers = Array.from(users.values());
-  const maxCommits = Math.max(1, ...allUsers.map((x) => x.estimatedCommits));
-  const maxStars = Math.max(1, ...allUsers.map((x) => x.totalStars));
-  const maxRepos = Math.max(1, ...allUsers.map((x) => x.publicRepos));
+  if (!isOpen) return null;
 
   return (
     <>
-      {/* SIDE PANEL (desktop) / BOTTOM SHEET (mobile) */}
+      {/* Dark backdrop */}
       <div
-        ref={panelRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onClick={close}
         style={{
-        position:   'fixed',
-        ...(isMobile
-          ? { bottom: 0, left: 0, width: '100%', height: '75vh', borderRadius: '16px 16px 0 0', borderTop: '2px solid #f5c518',
-              transform: isOpen ? 'translateY(0)' : 'translateY(100%)' }
-          : { top: 0, right: 0, width: '360px', height: '100vh', borderLeft: '2px solid #f5c518',
-              transform: isOpen ? 'translateX(0)' : 'translateX(100%)' }
-        ),
-        background: 'rgba(8, 5, 20, 0.97)',
-        transition: 'transform 0.35s cubic-bezier(0.4,0,0.2,1)',
-        zIndex:     1000,
-        overflowY:  'auto',
-        fontFamily: FONT,
-        display:    'flex',
-        flexDirection: 'column',
-      }}>
-        {/* Mobile drag handle */}
-        {isMobile && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 4px' }}>
-            <div style={{ width: '40px', height: '4px', borderRadius: '2px', background: '#555' }} />
-          </div>
-        )}
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          zIndex: 999,
+          backdropFilter: 'blur(3px)',
+        }}
+      />
 
-        {/* Header */}
-        <div style={{ padding: '16px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: '#f5c518', fontSize: '10px', letterSpacing: '0.1em' }}>
-            DEV PROFILE
-          </span>
+      {/* Terminal window — centered */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: 'min(580px, 92vw)',
+          maxHeight: '85vh',
+          background: '#0a0a0a',
+          border: '1px solid #333',
+          borderRadius: 8,
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 0 1px rgba(51,255,51,0.15)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* ── Title bar (macOS style) ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px',
+          background: '#1a1a1a',
+          borderBottom: '1px solid #333',
+          userSelect: 'none',
+        }}>
+          {/* Red dot close button */}
           <button
             onClick={close}
-            style={{ background: 'none', border: 'none', color: '#f5c518', cursor: 'pointer',
-              fontSize: '20px', fontFamily: 'monospace',
-              width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{
+              width: 14, height: 14, borderRadius: '50%',
+              background: '#ff5f57', border: 'none',
+              cursor: 'pointer', padding: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 9, color: 'transparent', lineHeight: 1,
+              transition: 'color 150ms',
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = '#4a0000'}
+            onMouseLeave={e => e.currentTarget.style.color = 'transparent'}
           >×</button>
+          {/* Yellow + Green dots (decorative) */}
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#febc2e' }} />
+          <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#28c840' }} />
+          {/* Title */}
+          <span style={{
+            flex: 1, textAlign: 'center',
+            fontFamily: MONO, fontSize: 12, color: '#888',
+            letterSpacing: '0.05em',
+          }}>
+            dev@gitworld: ~/{u?.login ?? 'user'}
+          </span>
         </div>
 
-        {!u && !loadingProfile && (
-          <div style={{ color: '#666', fontSize: '8px', padding: '20px', textAlign: 'center' }}>
-            NO DATA
-          </div>
+        {/* ── Terminal body ── */}
+        <div style={{
+          flex: 1, overflowY: 'auto', padding: '16px 20px',
+          fontFamily: MONO, fontSize: 13, lineHeight: 1.7,
+          color: '#33ff33',
+        }}>
+          {/* Skeleton while loading */}
+          {showSkeleton && <TerminalSkeleton />}
+
+          {/* No data */}
+          {!u && !loadingProfile && (
+            <div style={{ color: '#ff5555' }}>{'>'} Error: user not found</div>
+          )}
+
+          {/* Profile content */}
+          {u && !showSkeleton && <TerminalContent u={u} setFlyTarget={setFlyTarget} close={close} />}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Terminal-style profile content */
+function TerminalContent({ u, setFlyTarget, close }: {
+  u: SlimUser | CityUser;
+  setFlyTarget: (t: { x: number; y: number; z: number }) => void;
+  close: () => void;
+}) {
+  const full = 'name' in u ? u as CityUser : null;
+
+  return (
+    <div>
+      {/* Header with avatar */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
+        {u.avatarUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={u.avatarUrl}
+            alt={u.login}
+            width={64}
+            height={64}
+            style={{
+              imageRendering: 'pixelated',
+              borderRadius: 4,
+              border: '2px solid #33ff33',
+              flexShrink: 0,
+            }}
+          />
         )}
-
-        {loadingProfile && !u && (
-          <div style={{ color: '#f5c518', fontSize: '8px', padding: '20px', textAlign: 'center' }}>
-            LOADING...
+        <div>
+          <div style={{ color: '#ffffff', fontSize: 16, fontWeight: 'bold' }}>
+            $ whoami
           </div>
-        )}
-
-        {u && (
-          <div style={{ padding: '16px', flex: 1 }}>
-            {/* Avatar + name */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              {u.avatarUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={u.avatarUrl}
-                  alt={u.login}
-                  width={56}
-                  height={56}
-                  style={{ imageRendering: 'pixelated', borderRadius: '4px', border: '2px solid #f5c518' }}
-                />
-              )}
-              <div>
-                <div style={{ color: '#f5c518', fontSize: '10px', marginBottom: '4px' }}>
-                  {u.login}
-                </div>
-                {'name' in u && (u as CityUser).name && (u as CityUser).name !== u.login && (
-                  <div style={{ color: '#aaa', fontSize: '7px' }}>{(u as CityUser).name}</div>
-                )}
-              </div>
-            </div>
-
-            {/* Bio */}
-            {'bio' in u && (u as CityUser).bio && (
-              <div style={{ color: '#ccc', fontSize: '7px', lineHeight: 1.8, marginBottom: '12px',
-                background: 'rgba(255,255,255,0.04)', padding: '8px', borderLeft: '2px solid #f5c51855' }}>
-                {(u as CityUser).bio}
-              </div>
-            )}
-
-            {/* Location / Company */}
-            {'location' in u && ((u as CityUser).location || (u as CityUser).company) && (
-              <div style={{ color: '#888', fontSize: '7px', marginBottom: '12px', lineHeight: 2 }}>
-                {(u as CityUser).location && <div>📍 {(u as CityUser).location}</div>}
-                {(u as CityUser).company && <div>🏢 {(u as CityUser).company}</div>}
-              </div>
-            )}
-
-            {/* Building info */}
-            <div style={{ background: 'rgba(245,197,24,0.06)', border: '1px solid #f5c51844',
-              padding: '10px', marginBottom: '12px' }}>
-              <div style={{ color: '#f5c518', fontSize: '8px', marginBottom: '6px' }}>🧱 BUILDING</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '7px', color: '#ccc' }}>
-                <span>Rank: #{u.cityRank}</span>
-                <span>Tier: {getTier(u.cityRank)}</span>
-                <span>Score: {u.totalScore?.toLocaleString()}</span>
-                <span>Slot: #{u.citySlot}</span>
-              </div>
-            </div>
-
-            {/* Find Building button */}
-            {u.citySlot > 0 && (
-              <button
-                onClick={() => {
-                  const pos = slotToWorld(u.citySlot);
-                  const dims = getBuildingDimensions(u.cityRank, u.citySlot, u);
-                  setFlyTarget({ x: pos.x, y: dims.height / 2, z: pos.z });
-                  close();
-                }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'center',
-                  background: 'rgba(245,197,24,0.15)', border: '1px solid #f5c518',
-                  color: '#f5c518', padding: '8px', fontSize: '8px',
-                  cursor: 'pointer', fontFamily: FONT, marginBottom: '12px',
-                  letterSpacing: '0.1em',
-                }}
-              >
-                🏗️ FIND BUILDING →
-              </button>
-            )}
-
-            {/* Stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-              {[
-                { label: 'REPOS',     value: u.publicRepos ?? 0 },
-                { label: 'STARS',     value: u.totalStars ?? 0 },
-                { label: 'COMMITS~',  value: u.estimatedCommits ?? 0 },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ background: 'rgba(245,197,24,0.08)', border: '1px solid #f5c51844',
-                  padding: '8px', textAlign: 'center' }}>
-                  <div style={{ color: '#f5c518', fontSize: '8px', marginBottom: '4px' }}>{label}</div>
-                  <div style={{ color: '#fff', fontSize: '9px' }}>{value.toLocaleString()}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Language badge */}
-            {u.topLanguage && (
-              <div style={{ marginBottom: '12px' }}>
-                <span style={{ background: 'rgba(245,197,24,0.15)', border: '1px solid #f5c518',
-                  color: '#f5c518', padding: '4px 8px', fontSize: '7px' }}>
-                  {u.topLanguage}
-                </span>
-              </div>
-            )}
-
-            {/* Top repos (only available on full CityUser) */}
-            {'topRepos' in u && (u as CityUser).topRepos && (u as CityUser).topRepos.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ color: '#f5c518', fontSize: '8px', marginBottom: '8px' }}>TOP REPOS</div>
-                {(u as CityUser).topRepos.slice(0, 5).map((repo) => (
-                  <a key={repo.name} href={repo.url} target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'block', background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid #333', padding: '8px', marginBottom: '6px',
-                      textDecoration: 'none', color: '#ccc', fontSize: '7px', lineHeight: 1.8 }}>
-                    <div style={{ color: '#4cc9f0' }}>⬡ {repo.name}</div>
-                    <div style={{ color: '#888' }}>⭐ {(repo.stars || 0).toLocaleString()} · {repo.language || '?'}</div>
-                    {repo.description && (
-                      <div style={{ color: '#666', marginTop: '2px', fontSize: '6px',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {repo.description}
-                      </div>
-                    )}
-                  </a>
-                ))}
-              </div>
-            )}
-
-            {/* GitHub link */}
-            <a
-              href={`https://github.com/${encodeURIComponent(u.login)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'block', textAlign: 'center', background: '#f5c518', color: '#000',
-                padding: '10px', fontSize: '8px', textDecoration: 'none', letterSpacing: '0.1em',
-                fontFamily: FONT, marginTop: 'auto',
-              }}
-            >
-              VIEW ON GITHUB →
-            </a>
+          <div style={{ color: '#33ff33', fontSize: 15, marginTop: 4 }}>
+            {u.login}
           </div>
-        )}
+          {full?.name && (
+            <div style={{ color: '#ffcc00', fontSize: 13, marginTop: 3 }}>
+              {full.name}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Dark overlay */}
-      {isOpen && (
-        <div
-          onClick={close}
-          style={{
-            position: 'fixed', inset: 0,
-            ...(isMobile ? {} : { right: '360px' }),
-            background: 'rgba(0,0,0,0.25)',
-            zIndex: 999,
-          }}
-        />
+      {/* Bio */}
+      {full?.bio && (
+        <div style={{ marginBottom: 14 }}>
+          <span style={{ color: '#888' }}>$ echo $BIO</span>
+          <div style={{ color: '#cccccc', marginTop: 2 }}>{full.bio}</div>
+        </div>
       )}
-    </>
+
+      {/* Location / Company */}
+      {(full?.location || full?.company) && (
+        <div style={{ marginBottom: 14 }}>
+          {full.location && (
+            <div><span style={{ color: '#888' }}>location:</span> <span style={{ color: '#ffcc00' }}>{full.location}</span></div>
+          )}
+          {full.company && (
+            <div><span style={{ color: '#888' }}>company: </span> <span style={{ color: '#ffcc00' }}>{full.company}</span></div>
+          )}
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ color: '#333', marginBottom: 12 }}>{'─'.repeat(50)}</div>
+
+      {/* Building info */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ color: '#ffffff', marginBottom: 6 }}>$ cat /building/info</div>
+        <div style={{ paddingLeft: 8 }}>
+          <div><span style={{ color: '#888' }}>rank:  </span><span style={{ color: '#ff5555' }}>#{u.cityRank}</span></div>
+          <div><span style={{ color: '#888' }}>tier:  </span><span style={{ color: '#ff5555' }}>{getTier(u.cityRank)}</span></div>
+          <div><span style={{ color: '#888' }}>score: </span><span style={{ color: '#33ff33' }}>{u.totalScore?.toLocaleString()}</span></div>
+          <div><span style={{ color: '#888' }}>slot:  </span><span style={{ color: '#33ff33' }}>#{u.citySlot}</span></div>
+        </div>
+      </div>
+
+      {/* Find Building */}
+      {u.citySlot > 0 && (
+        <button
+          onClick={() => {
+            const pos = slotToWorld(u.citySlot);
+            const dims = getBuildingDimensions(u.cityRank, u.citySlot, u);
+            setFlyTarget({ x: pos.x, y: dims.height / 2, z: pos.z });
+            close();
+          }}
+          style={{
+            display: 'block', width: '100%',
+            background: 'transparent',
+            border: '1px solid #33ff33',
+            color: '#33ff33', padding: '8px',
+            fontSize: 13, cursor: 'pointer',
+            fontFamily: MONO, marginBottom: 14,
+            transition: 'background 150ms',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(51,255,51,0.1)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          {'>'} cd /city/building/{u.citySlot} && look
+        </button>
+      )}
+
+      {/* Divider */}
+      <div style={{ color: '#333', marginBottom: 12 }}>{'─'.repeat(50)}</div>
+
+      {/* Stats */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ color: '#ffffff', marginBottom: 6 }}>$ cat /dev/stats</div>
+        <div style={{ paddingLeft: 8 }}>
+          <div>
+            <span style={{ color: '#888' }}>repos:   </span>
+            <span style={{ color: '#33ff33' }}>{(u.publicRepos ?? 0).toLocaleString()}</span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>stars:   </span>
+            <span style={{ color: '#ffcc00' }}>{(u.totalStars ?? 0).toLocaleString()}</span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>commits: </span>
+            <span style={{ color: '#33ff33' }}>~{(u.estimatedCommits ?? 0).toLocaleString()}</span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>score:   </span>
+            <span style={{ color: '#ffffff' }}>{(u.totalScore ?? 0).toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Language */}
+      {u.topLanguage && (
+        <div style={{ marginBottom: 14 }}>
+          <span style={{ color: '#888' }}>language: </span>
+          <span style={{
+            color: LANGUAGE_COLORS[u.topLanguage] ?? '#33ff33',
+            fontWeight: 'bold',
+          }}>
+            {u.topLanguage}
+          </span>
+        </div>
+      )}
+
+      {/* Top repos */}
+      {full?.topRepos && full.topRepos.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: '#ffffff', marginBottom: 6 }}>$ ls ~/repos --top</div>
+          {full.topRepos.slice(0, 5).map((repo) => (
+            <a key={repo.name} href={repo.url} target="_blank" rel="noopener noreferrer"
+              style={{
+                display: 'block', padding: '6px 8px', marginBottom: 4,
+                textDecoration: 'none', color: '#33ff33',
+                fontFamily: MONO, fontSize: 12,
+                border: '1px solid transparent',
+                transition: 'border-color 150ms, background 150ms',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.background = 'rgba(51,255,51,0.04)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              <div>
+                <span style={{ color: '#5599ff' }}>drwxr-xr-x</span>{' '}
+                <span style={{ color: '#33ff33' }}>{repo.name}</span>
+              </div>
+              <div style={{ paddingLeft: 12, color: '#888', fontSize: 11 }}>
+                ⭐ {(repo.stars || 0).toLocaleString()} · {repo.language || '?'}
+                {repo.description && <span> · {repo.description.slice(0, 60)}</span>}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ color: '#333', marginBottom: 12 }}>{'─'.repeat(50)}</div>
+
+      {/* GitHub link */}
+      <a
+        href={`https://github.com/${encodeURIComponent(u.login)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: 'block', textAlign: 'center',
+          background: 'rgba(51,255,51,0.1)',
+          border: '1px solid #33ff33',
+          color: '#33ff33', padding: '10px',
+          fontSize: 13, textDecoration: 'none',
+          fontFamily: MONO, marginBottom: 8,
+          transition: 'background 150ms',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'rgba(51,255,51,0.2)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'rgba(51,255,51,0.1)'}
+      >
+        $ open https://github.com/{u.login}
+      </a>
+
+      {/* Cursor blink */}
+      <div style={{ color: '#33ff33', marginTop: 8 }}>
+        <span>{'>'} </span>
+        <span style={{ animation: 'terminalBlink 1s step-end infinite' }}>█</span>
+      </div>
+    </div>
   );
 }

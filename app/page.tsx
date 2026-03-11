@@ -29,8 +29,14 @@ export default function Home() {
 
   const enteredCity = useRef(false);
   const [dataReady, setDataReady] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
   const [showLoading, setShowLoading] = useState(true);
   const [loadingDismissed, setLoadingDismissed] = useState(false);
+
+  // Canvas reports first frame rendered
+  const handleCanvasReady = useCallback(() => {
+    setCanvasReady(true);
+  }, []);
 
   // Load data, then mount canvas, then show menu
   useEffect(() => {
@@ -62,10 +68,7 @@ export default function Home() {
       setIntroStage('done');
       setActiveMode('menu');
 
-      // Small delay then hide loading screen
-      setTimeout(() => {
-        if (!cancelled) setShowLoading(false);
-      }, 600);
+      // Loading screen fade is now triggered by canvasReady effect below
 
       // Subscribe to Supabase realtime
       if (!cancelled) {
@@ -102,6 +105,15 @@ export default function Home() {
     setLoadingDismissed(true);
   }, []);
 
+  // Three-state crossfade: only hide loading after canvas renders first frame
+  useEffect(() => {
+    if (canvasReady && showLoading) {
+      // Small delay ensures the frame is painted before fade starts
+      const t = setTimeout(() => setShowLoading(false), 100);
+      return () => clearTimeout(t);
+    }
+  }, [canvasReady, showLoading]);
+
   // Mode menu selection handler
   const handleModeSelect = useCallback((mode: ActiveMode) => {
     setActiveMode(mode);
@@ -115,7 +127,7 @@ export default function Home() {
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       {/* Canvas mounts once data is ready */}
-      {dataReady && <CityScene />}
+      {dataReady && <CityScene onReady={handleCanvasReady} />}
 
       {/* HUD shows after intro is done */}
       <HUD />

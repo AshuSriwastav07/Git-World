@@ -9,6 +9,9 @@ import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 
 const MAX_BUILDINGS = 8000;
 
+/* ── Window color palette per building ── */
+const WINDOW_COLORS = ['#ff3333', '#33ff33', '#ffdd33', '#ffffff', '#3399ff', '#222222'];
+
 /* ── Easing: slight overshoot for "pop-up" feel ── */
 function easeOutBack(t: number): number {
   const c1 = 1.70158;
@@ -312,8 +315,7 @@ export function CityGrid() {
           dummy.updateMatrix();
           body.setMatrixAt(count, dummy.matrix);
           glow.setMatrixAt(count, dummy.matrix);
-          const langCol = LANGUAGE_COLORS[user.topLanguage] ?? LANGUAGE_COLORS.default;
-          color.set(langCol);
+          color.set(WINDOW_COLORS[count % WINDOW_COLORS.length]);
           body.setColorAt(count, color);
           glow.setColorAt(count, color);
           bData.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), width: dims.width, height: dims.height, depth: dims.depth, dist });
@@ -343,8 +345,7 @@ export function CityGrid() {
       dummy.updateMatrix();
       glow.setMatrixAt(count, dummy.matrix);
 
-      const langCol = LANGUAGE_COLORS[user.topLanguage] ?? LANGUAGE_COLORS.default;
-      color.set(langCol);
+      color.set(WINDOW_COLORS[count % WINDOW_COLORS.length]);
       body.setColorAt(count, color);
       glow.setColorAt(count, color);
 
