@@ -106,7 +106,7 @@ export function AirplaneMode() {
   }, []);
 
   // ── Physics + camera update every frame ──
-  useFrame((_, rawDelta) => {
+  useFrame((state, rawDelta) => {
     if (!planeRef.current) return;
     const dt = Math.min(rawDelta, 0.05);
 
@@ -158,6 +158,7 @@ export function AirplaneMode() {
     planeRef.current.position.copy(pos.current);
 
     flightCam.updateFromPlane(pos.current, planeRef.current.quaternion, camera, dt);
+    state.invalidate();
   });
 
   // Plane materials — created once

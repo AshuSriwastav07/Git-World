@@ -68,9 +68,11 @@ function PromoPlane({ config }: { config: PromoPlaneConfig }) {
     return tex;
   }, [config.label, config.bannerColor]);
 
-  useFrame(({ clock }) => {
+  useFrame((state, delta) => {
+    const _dt = Math.min(delta, 0.05);
+    void _dt;
     if (!groupRef.current) return;
-    const t = clock.getElapsedTime() * config.speed + config.offset;
+    const t = state.clock.getElapsedTime() * config.speed + config.offset;
     const x = Math.cos(t) * config.radius;
     const z = Math.sin(t) * config.radius;
     groupRef.current.position.set(x, config.altitude, z);
@@ -80,6 +82,7 @@ function PromoPlane({ config }: { config: PromoPlaneConfig }) {
     if (propRef.current) {
       propRef.current.rotation.z += 0.4;
     }
+    state.invalidate();
   });
 
   return (

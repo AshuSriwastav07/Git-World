@@ -393,6 +393,8 @@ export function CityGrid() {
     glow.instanceMatrix.needsUpdate = true;
     if (body.instanceColor) body.instanceColor.needsUpdate = true;
     if (glow.instanceColor) glow.instanceColor.needsUpdate = true;
+    body.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    glow.instanceMatrix.setUsage(THREE.StaticDrawUsage);
     body.computeBoundingSphere();
     glow.computeBoundingSphere();
 
@@ -438,9 +440,10 @@ export function CityGrid() {
       (g.userData._current as THREE.Color).copy(g.userData._nightColor).lerp(g.userData._dayColor, f);
       g.color.copy(g.userData._current);
     }
+    _state.invalidate();
   });
 
-  useFrame(() => {
+  useFrame((riseState) => {
     if (introStage !== 'cinematic' && introStage !== 'loading') return;
     const body = bodyRef.current;
     const glow = glowRef.current;
@@ -489,6 +492,7 @@ export function CityGrid() {
       body.instanceMatrix.needsUpdate = true;
       glow.instanceMatrix.needsUpdate = true;
     }
+    riseState.invalidate();
   });
 
   /* ── Click-vs-drag guard ── */

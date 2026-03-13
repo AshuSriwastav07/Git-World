@@ -4,26 +4,28 @@
 import { Canvas, useFrame } from '@react-three/fiber';
 import { AdaptiveDpr } from '@react-three/drei';
 import { SkyEnvironment } from './environment/SkyEnvironment';
-import { Suspense, useRef, useCallback } from 'react';
+import { Suspense, useRef, useCallback, lazy } from 'react';
 import { useCityStore } from '@/lib/cityStore';
 import type { RootState } from '@react-three/fiber';
 import { CityGrid } from './CityGrid';
-import { TechPark } from './TechPark';
-import { AirplaneMode } from './airplane/AirplaneMode';
 import CameraController from './CameraController';
 import GodRaySpotlight from './GodRaySpotlight';
-import { SiliconValleyPark } from './SiliconValleyPark';
-import { TrendingDistrict } from './TrendingDistrict';
 import { SceneErrorBoundary } from './SceneErrorBoundary';
+
+const TechPark = lazy(() => import('./TechPark').then(m => ({ default: m.TechPark })));
+const SiliconValleyPark = lazy(() => import('./SiliconValleyPark').then(m => ({ default: m.SiliconValleyPark })));
+const TrendingDistrict = lazy(() => import('./TrendingDistrict').then(m => ({ default: m.TrendingDistrict })));
+const AirplaneMode = lazy(() => import('./airplane/AirplaneMode').then(m => ({ default: m.AirplaneMode })));
 
 /** Fires onReady after first frame renders */
 function ReadySignal({ onReady }: { onReady: () => void }) {
   const fired = useRef(false);
-  useFrame(() => {
+  useFrame((state) => {
     if (!fired.current) {
       fired.current = true;
       onReady();
     }
+    state.invalidate();
   });
   return null;
 }
@@ -101,16 +103,17 @@ export default function CityScene({ onReady }: { onReady?: () => void }) {
       onPointerDown={handleCanvasPointerDown}
     >
       <Canvas
-        frameloop="always"
-        dpr={[0.75, 1]}
+        frameloop="demand"
+        dpr={[1, 1.5]}
         flat
         gl={{
           antialias: false,
+          logarithmicDepthBuffer: true,
           powerPreference: 'high-performance',
           stencil: false,
           depth: true,
         }}
-        camera={{ position: [80, 55, 160], fov: 50, near: 1, far: 2000 }}
+        camera={{ position: [80, 55, 160], fov: 50, near: 0.5, far: 2500 }}
         shadows={false}
         performance={{ min: 0.3 }}
         onPointerMissed={handlePointerMissed}

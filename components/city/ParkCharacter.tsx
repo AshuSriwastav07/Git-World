@@ -2,7 +2,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import type { SlimUser } from '@/lib/supabaseDb';
@@ -20,10 +20,11 @@ export function ParkCharacter({ developer, position }: ParkCharacterProps) {
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
   const bodyColor = langColor(developer.topLanguage);
 
-  useFrame(({ clock, camera }) => {
+  useFrame((state) => {
     if (headRef.current) {
-      headRef.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.4) * 0.15;
+      headRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 0.4) * 0.15;
     }
+    state.invalidate();
   });
 
   const handleClick = (e: THREE.Event & { stopPropagation: () => void }) => {

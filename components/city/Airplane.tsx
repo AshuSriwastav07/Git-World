@@ -8,6 +8,28 @@ import { useCityStore } from '@/lib/cityStore';
 
 const MIN_ALTITUDE = 2;
 
+// Pre-allocated temp objects — NEVER inside useFrame (prevents GC pauses)
+const _right    = new THREE.Vector3();
+const _axisX    = new THREE.Vector3(1, 0, 0);
+const _axisY    = new THREE.Vector3(0, 1, 0);
+const _axisZ    = new THREE.Vector3(0, 0, 1);
+const _qPitch   = new THREE.Quaternion();
+const _qYaw     = new THREE.Quaternion();
+const _qRoll    = new THREE.Quaternion();
+const _qBank    = new THREE.Quaternion();
+const _qGrav    = new THREE.Quaternion();
+const _forward  = new THREE.Vector3();
+const _fwd2     = new THREE.Vector3();
+const _levelQ   = new THREE.Quaternion();
+const _levelMat = new THREE.Matrix4();
+const _origin   = new THREE.Vector3();
+const _up       = new THREE.Vector3(0, 1, 0);
+const _camOff   = new THREE.Vector3();
+const _targetCam = new THREE.Vector3();
+const _lookTarget = new THREE.Vector3();
+const _camQ     = new THREE.Quaternion();
+const _lookMat  = new THREE.Matrix4();
+
 export function Airplane() {
   const groupRef = useRef<THREE.Group>(null);
   const propellerRef = useRef<THREE.Group>(null);
@@ -75,7 +97,7 @@ export function Airplane() {
     };
   }, []);
 
-  useFrame((_, delta) => {
+  useFrame((_state, delta) => {
     const s = state.current;
     const keys = s.keys;
     const dt = Math.min(delta, 0.05); // Cap to prevent physics explosion
@@ -120,37 +142,29 @@ export function Airplane() {
     if (keys.has('control') || keys.has('c')) altThrust = -35;
 
     // Bank-to-turn: roll angle automatically generates yaw (realistic banking turns)
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(s.quaternion);
-    const bankYawRate = -right.y * 2.0;
+    _right.set(1, 0, 0).applyQuaternion(s.quaternion);
+    const bankYawRate = -_right.y * 2.0;
 
-    // Build rotation deltas as quaternions applied in local space
-    const qPitch = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(1, 0, 0), pitchRate * dt
-    );
-    const qYaw = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0), (yawRate + directYaw) * dt
-    );
-    const qRoll = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 0, 1), rollRate * dt
-    );
+    // Build rotation deltas as quaternions applied in local space (reuse pre-allocated)
+    _qPitch.setFromAxisAngle(_axisX, pitchRate * dt);
+    _qYaw.setFromAxisAngle(_axisY, (yawRate + directYaw) * dt);
+    _qRoll.setFromAxisAngle(_axisZ, rollRate * dt);
 
     // Bank-to-turn applied in world space (pre-multiply)
     if (Math.abs(bankYawRate) > 0.01) {
-      const qBank = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0), bankYawRate * dt
-      );
-      s.quaternion.premultiply(qBank);
+      _qBank.setFromAxisAngle(_axisY, bankYawRate * dt);
+      s.quaternion.premultiply(_qBank);
     }
 
     // Apply local rotations (order: yaw, pitch, roll)
-    s.quaternion.multiply(qYaw).multiply(qPitch).multiply(qRoll);
+    s.quaternion.multiply(_qYaw).multiply(_qPitch).multiply(_qRoll);
     s.quaternion.normalize();
 
     // Forward direction from quaternion
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(s.quaternion);
+    _forward.set(0, 0, -1).applyQuaternion(s.quaternion);
 
     // Move forward
-    s.position.addScaledVector(forward, s.speed * dt);
+    s.position.addScaledVector(_forward, s.speed * dt);
 
     // Direct altitude adjustment
     s.position.y += altThrust * dt;
@@ -158,10 +172,8 @@ export function Airplane() {
     // Gentle gravity: nose drifts down at low speed
     if (s.speed < 20) {
       const gravPitch = (1 - s.speed / 20) * 0.4 * dt;
-      const qGrav = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), gravPitch
-      );
-      s.quaternion.multiply(qGrav);
+      _qGrav.setFromAxisAngle(_axisX, gravPitch);
+      s.quaternion.multiply(_qGrav);
       s.quaternion.normalize();
     }
 
@@ -184,34 +196,30 @@ export function Airplane() {
     // Auto-level: quickly restore wings level when not actively steering
     const isIdle = Math.abs(s.mouseX) < 0.005 && Math.abs(s.mouseY) < 0.005 && !keys.has('a') && !keys.has('d');
     if (isIdle) {
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(s.quaternion);
-      const levelQ = new THREE.Quaternion();
-      const levelMat = new THREE.Matrix4().lookAt(
-        new THREE.Vector3(), fwd, new THREE.Vector3(0, 1, 0)
-      );
-      levelQ.setFromRotationMatrix(levelMat);
-      s.quaternion.slerp(levelQ, dt * 2.0);
+      _fwd2.set(0, 0, -1).applyQuaternion(s.quaternion);
+      _origin.set(0, 0, 0);
+      _up.set(0, 1, 0);
+      _levelMat.lookAt(_origin, _fwd2, _up);
+      _levelQ.setFromRotationMatrix(_levelMat);
+      s.quaternion.slerp(_levelQ, dt * 2.0);
       s.quaternion.normalize();
     }
 
-    // Camera follow — responsive lerp behind and above the plane
-    const camOffset = new THREE.Vector3(0, 6, 25);
-    camOffset.applyQuaternion(s.quaternion);
-    const targetCamPos = s.position.clone().add(camOffset);
-    camera.position.lerp(targetCamPos, 0.22);
+    // Camera follow — responsive lerp behind and above the plane (zero allocation)
+    _camOff.set(0, 6, 25).applyQuaternion(s.quaternion);
+    _targetCam.copy(s.position).add(_camOff);
+    camera.position.lerp(_targetCam, 0.22);
 
-    const lookTarget = s.position.clone().addScaledVector(forward, 15);
-    const camDir = new THREE.Vector3();
-    camDir.subVectors(lookTarget, camera.position).normalize();
-    const camQ = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    const lookMat = new THREE.Matrix4().lookAt(camera.position, lookTarget, up);
-    camQ.setFromRotationMatrix(lookMat);
-    camera.quaternion.slerp(camQ, 0.25);
+    _lookTarget.copy(s.position).addScaledVector(_forward, 15);
+    _up.set(0, 1, 0);
+    _lookMat.lookAt(camera.position, _lookTarget, _up);
+    _camQ.setFromRotationMatrix(_lookMat);
+    camera.quaternion.slerp(_camQ, 0.25);
 
     // Blink
     s.blinkTimer += dt;
     if (s.blinkTimer > 0.8) { s.blinkTimer = 0; s.blinkOn = !s.blinkOn; }
+    _state.invalidate();
   });
 
   return (

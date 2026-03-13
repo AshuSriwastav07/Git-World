@@ -1,7 +1,7 @@
 // DevCharacter — Minecraft-style developer with 7 behavior types
 'use client';
 
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, memo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Billboard, Text } from '@react-three/drei';
@@ -36,7 +36,7 @@ interface DevCharacterProps {
   publicRepos?: number;
 }
 
-export function DevCharacter({
+function DevCharacterInner({
   login,
   avatarUrl,
   topLanguage,
@@ -60,9 +60,9 @@ export function DevCharacter({
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
 
-  const isNight = useCityStore(s => s.isNight);
-  const selectUser = useCityStore(s => s.selectUser);
-  const users = useCityStore(s => s.users);
+  const screenRef = useRef<THREE.MeshLambertMaterial>(null);
+  const phoneRef = useRef<THREE.MeshLambertMaterial>(null);
+  const deskLightRef = useRef<THREE.PointLight>(null);
 
   const bodyColor = LANGUAGE_COLORS[topLanguage] ?? LANGUAGE_COLORS.default;
 
@@ -194,10 +194,26 @@ export function DevCharacter({
       }
       headRef.current.rotation.y = Math.sin(time * 0.3 + ph) * 0.15;
     }
+
+    // ── Imperative day/night: update screen/phone/light via refs (no subscription) ──
+    const night = useCityStore.getState().isNight;
+    if (screenRef.current) {
+      screenRef.current.emissive.set(night ? (behavior === 0 ? '#c8e4ff' : '#88bbff') : (behavior === 0 ? '#88bbff' : '#4466aa'));
+      screenRef.current.emissiveIntensity = night ? (behavior === 0 ? 0.8 : 0.6) : (behavior === 0 ? 0.2 : 0.15);
+    }
+    if (phoneRef.current) {
+      phoneRef.current.emissive.set(night ? '#88bbff' : '#4466aa');
+      phoneRef.current.emissiveIntensity = night ? 0.8 : 0.2;
+    }
+    if (deskLightRef.current) {
+      deskLightRef.current.intensity = night ? 0.5 : 0;
+    }
+    state.invalidate();
   });
 
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
+    const { users, selectUser } = useCityStore.getState();
     const existingUser = users.get(login.toLowerCase());
     if (existingUser) {
       selectUser(existingUser);
@@ -276,15 +292,9 @@ export function DevCharacter({
             </mesh>
             <mesh position={[0, 1.44, 0.9]} rotation={[-0.35, 0, 0]}>
               <boxGeometry args={[0.6, 0.4, 0.05]} />
-              <meshLambertMaterial
-                color="#1a1a2e"
-                emissive={isNight ? '#c8e4ff' : '#88bbff'}
-                emissiveIntensity={isNight ? 0.8 : 0.2}
-              />
+              <meshLambertMaterial ref={screenRef} color="#1a1a2e" emissive="#88bbff" emissiveIntensity={0.2} />
             </mesh>
-            {isNight && (
-              <pointLight position={[0, 1.5, 0.9]} color="#88bbff" intensity={0.5} distance={3} />
-            )}
+            <pointLight ref={deskLightRef} position={[0, 1.5, 0.9]} color="#88bbff" intensity={0} distance={3} />
           </>
         )}
         {(behavior === 2 || behavior === 6) && (
@@ -353,11 +363,7 @@ export function DevCharacter({
           </mesh>
           <mesh position={[0, 0.15, 0.16]} rotation={[-0.5, 0, 0]}>
             <boxGeometry args={[0.5, 0.3, 0.02]} />
-            <meshLambertMaterial
-              color="#1a1a2e"
-              emissive={isNight ? '#88bbff' : '#4466aa'}
-              emissiveIntensity={isNight ? 0.6 : 0.15}
-            />
+            <meshLambertMaterial ref={screenRef} color="#1a1a2e" emissive="#4466aa" emissiveIntensity={0.15} />
           </mesh>
         </group>
       )}
@@ -366,11 +372,7 @@ export function DevCharacter({
       {behavior === 5 && (
         <mesh position={[0, 0.75, 0.3]}>
           <boxGeometry args={[0.15, 0.25, 0.03]} />
-          <meshLambertMaterial
-            color="#222"
-            emissive={isNight ? '#88bbff' : '#4466aa'}
-            emissiveIntensity={isNight ? 0.8 : 0.2}
-          />
+          <meshLambertMaterial ref={phoneRef} color="#222" emissive="#4466aa" emissiveIntensity={0.2} />
         </mesh>
       )}
 
@@ -386,3 +388,5 @@ export function DevCharacter({
     </group>
   );
 }
+
+export const DevCharacter = memo(DevCharacterInner);

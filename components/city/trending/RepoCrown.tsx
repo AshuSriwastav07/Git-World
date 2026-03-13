@@ -18,16 +18,17 @@ let _lastFrameId = -1;
 export function RepoCrown({ color, y }: RepoCrownProps) {
   const groupRef = useRef<THREE.Group>(null!);
 
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     // Only compute rotation once per frame across all instances
-    const frameId = Math.floor(clock.elapsedTime * 1000);
+    const frameId = Math.floor(state.clock.elapsedTime * 1000);
     if (frameId !== _lastFrameId) {
-      _sharedRotation = clock.elapsedTime * Math.PI;
+      _sharedRotation = state.clock.elapsedTime * Math.PI;
       _lastFrameId = frameId;
     }
     if (groupRef.current) {
       groupRef.current.rotation.y = _sharedRotation;
     }
+    state.invalidate();
   });
 
   return (

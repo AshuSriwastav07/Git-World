@@ -11,18 +11,24 @@ export class FlightCamera {
   private _lookTarget = new THREE.Vector3();
   private _tempOffset = new THREE.Vector3();
 
-  /** Smooth follow: position lerps behind plane, lookAt is immediate */
+  /** Smooth follow: split XZ (snappy) / Y (smooth) lerp for stable flight feel */
   updateFromPlane(
     planePosition: THREE.Vector3,
     planeQuaternion: THREE.Quaternion,
     camera: THREE.Camera,
-    _dt: number,
+    dt: number,
   ): void {
     // Camera target position = plane pos + rotated local offset
     this._tempOffset.copy(LOCAL_OFFSET);
     this._worldOffset.copy(this._tempOffset).applyQuaternion(planeQuaternion);
     this._targetCamPos.copy(planePosition).add(this._worldOffset);
-    camera.position.lerp(this._targetCamPos, 0.08);
+
+    // Frame-rate-independent split lerp: XZ tracks faster, Y is softer
+    const xzSmooth = 1 - Math.exp(-2.0 * dt);
+    const ySmooth  = 1 - Math.exp(-1.8 * dt);
+    camera.position.x += (this._targetCamPos.x - camera.position.x) * xzSmooth;
+    camera.position.z += (this._targetCamPos.z - camera.position.z) * xzSmooth;
+    camera.position.y += (this._targetCamPos.y - camera.position.y) * ySmooth;
 
     // Look ahead of the plane
     this._tempOffset.copy(LOOK_AHEAD);

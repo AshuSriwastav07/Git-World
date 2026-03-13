@@ -13,14 +13,51 @@ const GREEN = '#00ff41';
 const BG = '#0a0f0a';
 const BG_LIGHT = '#111a11';
 
-// Profile cache — avoids re-fetching
-const profileCache = new Map<string, CityUser>();
+// Profile cache with TTL + stale-while-revalidate + LRU eviction
+const CACHE_MAX = 200;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+interface CacheEntry { data: CityUser; ts: number }
+const profileCache = new Map<string, CacheEntry>();
+
+function cacheGet(key: string): CityUser | null {
+  const entry = profileCache.get(key);
+  if (!entry) return null;
+  // Move to end for LRU ordering
+  profileCache.delete(key);
+  profileCache.set(key, entry);
+  return entry.data;
+}
+
+function cacheSet(key: string, data: CityUser) {
+  profileCache.delete(key); // reinsert at end
+  if (profileCache.size >= CACHE_MAX) {
+    // Evict oldest entry (first key)
+    const oldest = profileCache.keys().next().value;
+    if (oldest !== undefined) profileCache.delete(oldest);
+  }
+  profileCache.set(key, { data, ts: Date.now() });
+}
+
+function cacheIsStale(key: string): boolean {
+  const entry = profileCache.get(key);
+  if (!entry) return true;
+  return Date.now() - entry.ts > CACHE_TTL;
+}
+
+/** Revalidate in background (stale-while-revalidate) */
+function revalidate(login: string) {
+  const key = login.toLowerCase();
+  loadUserProfile(login).then(stored => {
+    if (stored) cacheSet(key, stored);
+  }).catch(() => {});
+}
 
 /** Preload a profile into cache (called on hover from CityGrid) */
 export function preloadProfile(login: string) {
-  if (profileCache.has(login.toLowerCase())) return;
+  const key = login.toLowerCase();
+  if (profileCache.has(key) && !cacheIsStale(key)) return;
   loadUserProfile(login).then(stored => {
-    if (stored) profileCache.set(login.toLowerCase(), stored);
+    if (stored) cacheSet(key, stored);
   }).catch(() => {});
 }
 
@@ -59,10 +96,13 @@ export function ProfileModal() {
     if (!selectedUser) { setFullProfile(null); return; }
 
     const login = selectedUser.login;
-    const cached = profileCache.get(login.toLowerCase());
+    const key = login.toLowerCase();
+    const cached = cacheGet(key);
     if (cached) {
       setFullProfile(cached);
       setLoadingProfile(false);
+      // Background revalidate if stale
+      if (cacheIsStale(key)) revalidate(login);
       return;
     }
 
@@ -73,7 +113,7 @@ export function ProfileModal() {
         const stored = await loadUserProfile(login);
         if (cancelled) return;
         if (stored) {
-          profileCache.set(login.toLowerCase(), stored);
+          cacheSet(login.toLowerCase(), stored);
           setFullProfile(stored);
         }
       } catch (error) {

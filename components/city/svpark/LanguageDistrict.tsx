@@ -1,8 +1,9 @@
 // LanguageDistrict — themed programming-language section inside SV park perimeter
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { useCityStore } from '@/lib/cityStore';
 import { DevCharacter, type BehaviorType } from './DevCharacter';
 
@@ -104,8 +105,21 @@ function generateSlots(count: number) {
 }
 
 export function LanguageDistrict({ language, color, position, developers }: LanguageDistrictProps) {
-  const isNight = useCityStore(s => s.isNight);
+  const grassRef = useRef<THREE.MeshLambertMaterial>(null);
+  const lampRefs = useRef<(THREE.PointLight | null)[]>([null, null]);
   const slots = useMemo(() => generateSlots(developers.length), [developers.length]);
+
+  useFrame((state) => {
+    const night = useCityStore.getState().isNight;
+    if (grassRef.current) {
+      grassRef.current.emissive.set(night ? color : '#000000');
+      grassRef.current.emissiveIntensity = night ? 0.15 : 0;
+    }
+    for (const lamp of lampRefs.current) {
+      if (lamp) lamp.intensity = night ? 2 : 0;
+    }
+    state.invalidate();
+  });
 
   const bannerTex = useMemo(() => {
     if (typeof window === 'undefined') return null;
@@ -118,11 +132,12 @@ export function LanguageDistrict({ language, color, position, developers }: Lang
       <mesh position={[0, 0.06, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[10, 24]} />
         <meshLambertMaterial
+          ref={grassRef}
           color={color}
           transparent
           opacity={0.15}
-          emissive={isNight ? color : '#000000'}
-          emissiveIntensity={isNight ? 0.15 : 0}
+          emissive="#000000"
+          emissiveIntensity={0}
         />
       </mesh>
 
@@ -156,9 +171,7 @@ export function LanguageDistrict({ language, color, position, developers }: Lang
             <boxGeometry args={[0.6, 0.3, 0.6]} />
             <meshBasicMaterial color={color} />
           </mesh>
-          {isNight && (
-            <pointLight position={[0, 3.5, 0]} color={color} intensity={2} distance={12} />
-          )}
+          <pointLight ref={el => { lampRefs.current[i] = el; }} position={[0, 3.5, 0]} color={color} intensity={0} distance={12} />
         </group>
       ))}
 

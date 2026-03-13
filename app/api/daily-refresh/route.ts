@@ -48,6 +48,14 @@ export async function GET(request: Request) {
       results.rankRecalc = { error: String(err) };
     }
 
+    // 4. Warm CDN snapshot after ranks are fresh
+    try {
+      const snapRes = await fetch(`${origin}/api/city/snapshot`);
+      results.snapshotWarm = { status: snapRes.status, ok: snapRes.ok };
+    } catch (err) {
+      results.snapshotWarm = { error: String(err) };
+    }
+
     return NextResponse.json({ ok: true, results });
   } catch (error) {
     console.error('Daily refresh error:', error);

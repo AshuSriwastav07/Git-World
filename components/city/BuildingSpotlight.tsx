@@ -31,8 +31,9 @@ export default function BuildingSpotlight({ user }: Props) {
   const lc = langColor(user.topLanguage);
   const BEAM_HEIGHT = 200;
 
-  useFrame((_, delta) => {
-    timeRef.current += delta;
+  useFrame((state, delta) => {
+    const dt = Math.min(delta, 0.05);
+    timeRef.current += dt;
     const t = timeRef.current;
 
     if (beamRef.current) {
@@ -46,6 +47,7 @@ export default function BuildingSpotlight({ user }: Props) {
       const mat = ringRef.current.material as THREE.MeshBasicMaterial;
       mat.opacity = 0.7 + 0.3 * Math.sin(t * 3);
     }
+    state.invalidate();
   });
 
   return (

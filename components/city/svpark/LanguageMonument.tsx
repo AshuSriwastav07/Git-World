@@ -14,8 +14,9 @@ interface LanguageMonumentProps {
 // Python: Double-helix DNA strand
 function PythonHelix({ color, isNight }: { color: string; isNight: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (groupRef.current) groupRef.current.rotation.y = clock.getElapsedTime() * 0.15;
+  useFrame((state) => {
+    if (groupRef.current) groupRef.current.rotation.y = state.clock.getElapsedTime() * 0.15;
+    state.invalidate();
   });
 
   const blocks: { pos: [number, number, number]; strand: number }[] = [];
@@ -53,11 +54,12 @@ function PythonHelix({ color, isNight }: { color: string; isNight: boolean }) {
 // JavaScript: Rotating yellow cube with JS letters
 function JSCube({ color, isNight }: { color: string; isNight: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (meshRef.current) {
-      meshRef.current.rotation.y = clock.getElapsedTime() * 0.3;
-      meshRef.current.position.y = 4 + Math.sin(clock.getElapsedTime() * 0.8) * 0.3;
+      meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.3;
+      meshRef.current.position.y = 4 + Math.sin(state.clock.getElapsedTime() * 0.8) * 0.3;
     }
+    state.invalidate();
   });
 
   return (
@@ -88,11 +90,12 @@ function JSCube({ color, isNight }: { color: string; isNight: boolean }) {
 // TypeScript: Blue cube with angular notch
 function TSCube({ color, isNight }: { color: string; isNight: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (meshRef.current) {
-      meshRef.current.rotation.y = clock.getElapsedTime() * 0.25;
-      meshRef.current.position.y = 4 + Math.sin(clock.getElapsedTime() * 0.7) * 0.3;
+      meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.25;
+      meshRef.current.position.y = 4 + Math.sin(state.clock.getElapsedTime() * 0.7) * 0.3;
     }
+    state.invalidate();
   });
 
   return (
@@ -126,16 +129,17 @@ function TSCube({ color, isNight }: { color: string; isNight: boolean }) {
 // Java: Coffee cup with steam
 function JavaCoffeeCup({ color, isNight }: { color: string; isNight: boolean }) {
   const steamRef = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (steamRef.current) {
       steamRef.current.children.forEach((child, i) => {
         const mesh = child as THREE.Mesh;
-        const t = clock.getElapsedTime() + i * 0.5;
+        const t = state.clock.getElapsedTime() + i * 0.5;
         mesh.position.y = 6.5 + (t % 2) * 1.5;
         mesh.position.x = Math.sin(t * 2 + i) * 0.3;
         (mesh.material as THREE.MeshLambertMaterial).opacity = Math.max(0, 1 - (t % 2) / 2);
       });
     }
+    state.invalidate();
   });
 
   return (
@@ -185,8 +189,9 @@ function JavaCoffeeCup({ color, isNight }: { color: string; isNight: boolean }) 
 // Rust: Spinning gear/cog
 function RustGear({ color, isNight }: { color: string; isNight: boolean }) {
   const gearRef = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (gearRef.current) gearRef.current.rotation.z = clock.getElapsedTime() * 0.2;
+  useFrame((state) => {
+    if (gearRef.current) gearRef.current.rotation.z = state.clock.getElapsedTime() * 0.2;
+    state.invalidate();
   });
 
   const TEETH = 8;
@@ -361,11 +366,12 @@ function CppBlockLetters({ color, isNight }: { color: string; isNight: boolean }
 // Kotlin: Rotating diamond shape
 function KotlinDiamond({ color, isNight }: { color: string; isNight: boolean }) {
   const diamondRef = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (diamondRef.current) {
-      diamondRef.current.rotation.y = clock.getElapsedTime() * 0.4;
-      diamondRef.current.position.y = 5 + Math.sin(clock.getElapsedTime() * 0.6) * 0.4;
+      diamondRef.current.rotation.y = state.clock.getElapsedTime() * 0.4;
+      diamondRef.current.position.y = 5 + Math.sin(state.clock.getElapsedTime() * 0.6) * 0.4;
     }
+    state.invalidate();
   });
 
   return (

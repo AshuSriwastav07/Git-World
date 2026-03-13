@@ -8,28 +8,33 @@ import { useCityStore } from '@/lib/cityStore';
 
 const COMPANY_COLORS = ['#c0c0c0', '#4285f4', '#76b900', '#0082fb']; // Apple, Google, NVIDIA, Meta
 
+// Pre-allocated color objects to avoid GC in useFrame
+const _c1 = new THREE.Color();
+const _c2 = new THREE.Color();
+
 export function CentralPlaza() {
   const isNight = useCityStore(s => s.isNight);
   const orbRef = useRef<THREE.Mesh>(null);
   const orbLightRef = useRef<THREE.PointLight>(null);
 
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
     const idx = Math.floor((t * 0.3) % 4);
     const nextIdx = (idx + 1) % 4;
     const blend = (t * 0.3) % 1;
 
-    const c1 = new THREE.Color(COMPANY_COLORS[idx]);
-    const c2 = new THREE.Color(COMPANY_COLORS[nextIdx]);
-    const blended = c1.lerp(c2, blend);
+    _c1.set(COMPANY_COLORS[idx]);
+    _c2.set(COMPANY_COLORS[nextIdx]);
+    const blended = _c1.lerp(_c2, blend);
 
     if (orbRef.current) {
-      (orbRef.current.material as THREE.MeshStandardMaterial).emissive = blended;
-      (orbRef.current.material as THREE.MeshStandardMaterial).color = blended;
+      (orbRef.current.material as THREE.MeshStandardMaterial).emissive.copy(blended);
+      (orbRef.current.material as THREE.MeshStandardMaterial).color.copy(blended);
     }
     if (orbLightRef.current) {
-      orbLightRef.current.color = blended;
+      orbLightRef.current.color.copy(blended);
     }
+    state.invalidate();
   });
 
   return (

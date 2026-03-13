@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 
 const DUMMY = new THREE.Object3D();
+const _tempColor = new THREE.Color(); // Pre-allocated for useFrame loop
 const MAX_WINDOWS = 90000;
 const DARK_WINDOW = new THREE.Color('#1a1028');
 const ACCENT_COLORS = [
@@ -196,25 +197,25 @@ export default function WindowSparkleLayer({ buildings, isNight }: Props) {
     glowMesh.count = glows.length;
   }, [glows, windows]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const baseMesh = baseRef.current;
     const glowMesh = glowRef.current;
     if (!baseMesh?.instanceColor) return;
-    timeRef.current += delta;
+    const dt = Math.min(delta, 0.05);
+    timeRef.current += dt;
     const elapsed = timeRef.current;
-    const temp = new THREE.Color();
 
     for (let index = 0; index < windows.length; index++) {
       const window = windows[index];
       if (window.lit) {
         const pulse = 0.9 + 0.1 * Math.sin(elapsed * window.speed + window.phase);
         const boost = isNight ? 1.45 : 0.9;
-        temp.setRGB(window.r * pulse * boost, window.g * pulse * boost, window.b * pulse * boost);
+        _tempColor.setRGB(window.r * pulse * boost, window.g * pulse * boost, window.b * pulse * boost);
       } else {
         const dim = isNight ? 0.95 : 0.75;
-        temp.setRGB(window.r * dim, window.g * dim, window.b * dim);
+        _tempColor.setRGB(window.r * dim, window.g * dim, window.b * dim);
       }
-      baseMesh.setColorAt(index, temp);
+      baseMesh.setColorAt(index, _tempColor);
     }
     baseMesh.instanceColor.needsUpdate = true;
 
@@ -223,10 +224,11 @@ export default function WindowSparkleLayer({ buildings, isNight }: Props) {
       const glow = glows[index];
       const pulse = 1 + 0.22 * Math.sin(elapsed * glow.speed + glow.phase);
       const boost = isNight ? 1.85 : 0.7;
-      temp.setRGB(glow.r * pulse * boost, glow.g * pulse * boost, glow.b * pulse * boost);
-      glowMesh.setColorAt(index, temp);
+      _tempColor.setRGB(glow.r * pulse * boost, glow.g * pulse * boost, glow.b * pulse * boost);
+      glowMesh.setColorAt(index, _tempColor);
     }
     glowMesh.instanceColor.needsUpdate = true;
+    state.invalidate();
   });
 
   if (windows.length === 0) return null;

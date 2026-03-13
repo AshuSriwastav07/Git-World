@@ -80,12 +80,13 @@ export function NetflixBuilding({ position = [0, 0, 0], scale = 1 }: NetflixBuil
   }, []);
 
   // Blink the antenna light
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (antennaLightRef.current) {
-      const t = clock.getElapsedTime();
+      const t = state.clock.getElapsedTime();
       const blink = Math.sin(t * 3) > 0;
       (antennaLightRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = blink ? 1.5 : 0.2;
     }
+    state.invalidate();
   });
 
   return (

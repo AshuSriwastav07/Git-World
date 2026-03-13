@@ -123,7 +123,8 @@ function WalkingCharacter({ developer, waypoints, speed }: {
   const wpIdx = useRef(0);
   const progress = useRef(0);
 
-  useFrame((_, dt) => {
+  useFrame((state, rawDt) => {
+    const dt = Math.min(rawDt, 0.05);
     if (!groupRef.current || waypoints.length < 2) return;
     const from = waypoints[wpIdx.current];
     const to = waypoints[(wpIdx.current + 1) % waypoints.length];
@@ -152,6 +153,7 @@ function WalkingCharacter({ developer, waypoints, speed }: {
       wpIdx.current = (wpIdx.current + 1) % waypoints.length;
       progress.current = 0;
     }
+    state.invalidate();
   });
 
   return (
@@ -208,11 +210,14 @@ function SittingLaptopCharacter({ position, developer, facing = 0 }: {
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
   const headRef = useRef<THREE.Mesh>(null);
 
-  useFrame(({ clock }) => {
+  useFrame((state, delta) => {
+    const _dt = Math.min(delta, 0.05);
+    void _dt;
     if (headRef.current) {
-      headRef.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.3 + position[0]) * 0.2;
-      headRef.current.rotation.x = Math.sin(clock.getElapsedTime() * 0.5 + position[2]) * 0.08 - 0.15;
+      headRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 0.3 + position[0]) * 0.2;
+      headRef.current.rotation.x = Math.sin(state.clock.getElapsedTime() * 0.5 + position[2]) * 0.08 - 0.15;
     }
+    state.invalidate();
   });
 
   return (

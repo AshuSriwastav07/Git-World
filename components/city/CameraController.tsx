@@ -28,8 +28,6 @@ export default function CameraController() {
   const flyTarget        = useCityStore(s => s.flyTarget);
   const setFlyTarget     = useCityStore(s => s.setFlyTarget);
   const toggleNight      = useCityStore(s => s.toggleNight);
-  const setRankChartOpen = useCityStore(s => s.setRankChartOpen);
-  const isRankChartOpen  = useCityStore(s => s.isRankChartOpen);
   const introStage       = useCityStore(s => s.introStage);
   const introStartTime   = useCityStore(s => s.introStartTime);
   const userInteracted   = useCityStore(s => s.userInteracted);
@@ -87,10 +85,8 @@ export default function CameraController() {
       // Mark user interaction on keyboard press
       if (!useCityStore.getState().userInteracted) useCityStore.getState().setUserInteracted();
       if (key === 'n') toggleNight();
-      if (key === 'r') setRankChartOpen(!isRankChartOpen);
       if (key === 'escape') {
         useCityStore.getState().setSelectedUser(null);
-        useCityStore.getState().setRankChartOpen(false);
         const current = useCityStore.getState().activeMode;
         if (current === 'explore') useCityStore.getState().setActiveMode('menu');
       }
@@ -102,7 +98,7 @@ export default function CameraController() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isRankChartOpen, setRankChartOpen, toggleNight]);
+  }, [toggleNight]);
 
   // ── Fly to selected building (offset camera right so building is on left half, panel on right) ──
   useEffect(() => {
@@ -136,7 +132,7 @@ export default function CameraController() {
   }, [flyTarget, camera, selectedUser]);
 
   // ── Frame loop ──
-  useFrame((_, rawDelta) => {
+  useFrame((state, rawDelta) => {
     if (flightMode) return;
     const delta = Math.min(rawDelta, 0.06);
 
@@ -212,6 +208,9 @@ export default function CameraController() {
       }
       if (anim.progress >= 1) { anim.active = false; setFlyTarget(null); }
     }
+
+    // demand mode — always request next frame (camera may be auto-rotating or damping)
+    state.invalidate();
   });
 
   if (flightMode) return null;

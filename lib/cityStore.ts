@@ -12,7 +12,6 @@ interface CityStoreState {
   sortedLogins: string[];
   isNight: boolean;
   isAirplaneMode: boolean;
-  isRankChartOpen: boolean;
   selectedUser: SlimUser | null;
   isLoading: boolean;
   loadingProgress: number;
@@ -37,7 +36,6 @@ interface CityStoreState {
   selectUser: (user: SlimUser | null) => void;
   toggleNight: () => void;
   toggleAirplaneMode: () => void;
-  setRankChartOpen: (open: boolean) => void;
   setSelectedUser: (user: SlimUser | null) => void;
   setLoading: (loading: boolean) => void;
   setLoadingProgress: (progress: number, message?: string) => void;
@@ -77,7 +75,6 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   sortedLogins: [],
   isNight: true,
   isAirplaneMode: false,
-  isRankChartOpen: false,
   selectedUser: null,
   isLoading: true,
   loadingProgress: 0,
@@ -140,8 +137,6 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
 
   toggleAirplaneMode: () => set((s) => ({ isAirplaneMode: !s.isAirplaneMode })),
 
-  setRankChartOpen: (open: boolean) => set({ isRankChartOpen: open }),
-
   setSelectedUser: (user: SlimUser | null) => set({ selectedUser: user }),
 
   setLoading: (loading: boolean) => {
@@ -163,8 +158,13 @@ export const useCityStore = create<CityStoreState>((set, get) => ({
   getUserByLogin: (login: string) => get().users.get(login.toLowerCase()),
 
   getTopUsers: (count: number) => {
-    const all = Array.from(get().users.values());
-    return all.sort((a, b) => b.totalScore - a.totalScore).slice(0, count);
+    const { sortedLogins, users } = get();
+    const result: SlimUser[] = [];
+    for (let i = 0; i < sortedLogins.length && result.length < count; i++) {
+      const u = users.get(sortedLogins[i]);
+      if (u) result.push(u);
+    }
+    return result;
   },
 
   getRandomUser: () => {

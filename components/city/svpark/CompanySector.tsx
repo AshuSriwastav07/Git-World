@@ -4,8 +4,9 @@
 // Generates EXACTLY developers.length character slots (never drops devs).
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { useCityStore } from '@/lib/cityStore';
 import { DevCharacter, type BehaviorType } from './DevCharacter';
 
@@ -73,8 +74,15 @@ const WALK_PATHS: [number, number, number][][] = [
 ];
 
 export function CompanySector({ config, developers }: CompanySectorProps) {
-  const isNight = useCityStore(s => s.isNight);
+  const nightLightRef = useRef<THREE.PointLight>(null);
   const slots = useMemo(() => generateCharacterSlots(developers.length), [developers.length]);
+
+  useFrame((state) => {
+    if (nightLightRef.current) {
+      nightLightRef.current.intensity = useCityStore.getState().isNight ? 2 : 0;
+    }
+    state.invalidate();
+  });
 
   return (
     <group>
@@ -108,9 +116,7 @@ export function CompanySector({ config, developers }: CompanySectorProps) {
       })}
 
       {/* ── Night lighting ── */}
-      {isNight && (
-        <pointLight position={[0, 8, 0]} color={config.brandColor} intensity={2} distance={35} />
-      )}
+      <pointLight ref={nightLightRef} position={[0, 8, 0]} color={config.brandColor} intensity={0} distance={35} />
     </group>
   );
 }

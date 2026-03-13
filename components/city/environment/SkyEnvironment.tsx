@@ -321,6 +321,8 @@ export function SkyEnvironment() {
       fog.near = THREE.MathUtils.lerp(200, 300, f);
       fog.far = THREE.MathUtils.lerp(800, 1000, f);
     }
+
+    state.invalidate();
   });
 
   return (

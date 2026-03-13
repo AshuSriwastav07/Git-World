@@ -41,9 +41,10 @@ export default function Building({
     return () => clearTimeout(t);
   }, [animateIn, animateDelay]);
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     if (!rising.current || !canRise.current) return;
     setScaleY(p => { const n = Math.min(p + dt * 4, 1); if (n >= 1) rising.current = false; return n; });
+    state.invalidate();
   });
 
   // Texture
@@ -150,11 +151,12 @@ export default function Building({
 // Pulsing selection ring
 function SelectionRing({ width, depth, height }: { width: number; depth: number; height: number }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  useFrame(({ clock }) => {
+  useFrame((state) => {
     if (!meshRef.current) return;
-    const t = clock.getElapsedTime();
+    const t = state.clock.getElapsedTime();
     meshRef.current.scale.setScalar(1 + 0.15 * Math.sin(t * 4));
     (meshRef.current.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.35 * Math.sin(t * 4);
+    state.invalidate();
   });
   return (
     <>

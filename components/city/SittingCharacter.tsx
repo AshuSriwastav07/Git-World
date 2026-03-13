@@ -27,10 +27,11 @@ export default function SittingCharacter({ user, position, cameraDistance = 999 
   const skinMat  = new THREE.MeshLambertMaterial({ color: hovered ? '#ffffff' : skinColor });
   const pantsMat = new THREE.MeshLambertMaterial({ color: pantsColor });
 
-  useFrame(() => {
+  useFrame((state) => {
     if (groupRef.current) {
       groupRef.current.scale.setScalar(hovered ? 1.08 : 1.0);
     }
+    state.invalidate();
   });
 
   const handleClick = (e: THREE.Event & { stopPropagation: () => void }) => {

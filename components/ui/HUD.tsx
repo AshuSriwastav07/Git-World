@@ -1,11 +1,9 @@
 // HUD — Minimal top bar (36px) + persistent overlays
 'use client';
 
+import { Suspense, lazy } from 'react';
 import { useCityStore } from '@/lib/cityStore';
 import { SearchBar } from './SearchBar';
-import { ProfileModal } from './ProfileModal';
-import { RepoProfilePanel } from './RepoProfilePanel';
-import { RankChart } from './RankChart';
 import { MiniMap } from './MiniMap';
 import { TopFiveWidget } from './TopFiveWidget';
 import { LiveFeed } from './LiveFeed';
@@ -13,7 +11,10 @@ import { AirplaneHUD } from './AirplaneHUD';
 import { Controls } from './Controls';
 import { GitHubStars } from './GitHubStars';
 import { JoinToast } from './JoinToast';
-import { LeaderboardPanel } from './LeaderboardPanel';
+
+const ProfileModal = lazy(() => import('./ProfileModal').then(m => ({ default: m.ProfileModal })));
+const RepoProfilePanel = lazy(() => import('./RepoProfilePanel').then(m => ({ default: m.RepoProfilePanel })));
+const LeaderboardPanel = lazy(() => import('./LeaderboardPanel').then(m => ({ default: m.LeaderboardPanel })));
 
 const FONT = "'Press Start 2P', monospace";
 
@@ -39,13 +40,14 @@ export function HUD() {
 
   return (
     <>
-      {/* Always-mounted overlays */}
-      <ProfileModal />
-      <RepoProfilePanel />
-      <RankChart />
+      {/* Always-mounted overlays (lazy-loaded) */}
+      <Suspense fallback={null}>
+        <ProfileModal />
+        <RepoProfilePanel />
+        <LeaderboardPanel />
+      </Suspense>
       <AirplaneHUD />
       <JoinToast />
-      <LeaderboardPanel />
 
       {/* ── Minimal 36px top bar ── */}
       {showUI && (

@@ -59,6 +59,9 @@ const BANNER_CONFIGS: BannerConfig[] = [
   { orbitRadius: 16, baseHeight: 75, oscillationAmp: 3, oscillationSpeed: 0.30, orbitSpeed: (2 * Math.PI) / 60 },
 ];
 
+// Pre-allocated vector to avoid GC in useFrame
+const _worldPos = new THREE.Vector3();
+
 export function FlyingBanners() {
   const userCount = useCityStore(s => s.users.size);
   const { camera } = useThree();
@@ -106,8 +109,8 @@ export function FlyingBanners() {
   }, [userCount, lastCount]);
 
   // Single shared useFrame for all three banners
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
+  useFrame((state) => {
+    const t = state.clock.getElapsedTime();
     const groups = [group1Ref, group2Ref, group3Ref];
     const meshes = [mesh1Ref, mesh2Ref, mesh3Ref];
 
@@ -124,10 +127,10 @@ export function FlyingBanners() {
       m.position.y = cfg.baseHeight + Math.sin(t * cfg.oscillationSpeed) * cfg.oscillationAmp;
 
       // Face camera (billboard)
-      const worldPos = new THREE.Vector3();
-      m.getWorldPosition(worldPos);
+      m.getWorldPosition(_worldPos);
       m.lookAt(camera.position);
     }
+    state.invalidate();
   });
 
   const handleCreatorClick = () => {
