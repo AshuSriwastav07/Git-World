@@ -114,7 +114,7 @@ function BillboardSign() {
   const BOARD_Y = 12;
 
   return (
-    <group position={[0, 0, TRENDING_HALF + 5]}>
+    <group position={[0, 0, 36]}>
       {/* Left post */}
       <mesh position={[-BOARD_WIDTH / 2 + 0.5, BOARD_Y / 2, 0]}>
         <boxGeometry args={[0.5, BOARD_Y, 0.5]} />
@@ -212,7 +212,7 @@ function DistrictBorder() {
 // Entrance pillars with gold light strips
 function EntrancePillars() {
   return (
-    <group position={[0, 0, TRENDING_HALF + 1]}>
+    <group position={[0, 0, TRENDING_HALF - 3]}>
       <group position={[-3, 0, 0]}>
         <mesh position={[0, 1.5, 0]}>
           <boxGeometry args={[0.6, 3, 0.6]} />
@@ -288,6 +288,38 @@ function Pathways() {
   );
 }
 
+function ReferenceTrendingBoard() {
+  const boardTex = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1100;
+    canvas.height = 520;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#f3aa00';
+    ctx.fillRect(0, 0, 1100, 520);
+    ctx.strokeStyle = '#141414';
+    ctx.setLineDash([24, 12]);
+    ctx.lineWidth = 10;
+    ctx.strokeRect(14, 14, 1072, 492);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 96px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Trending Repos', 550, 260);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  return (
+    <mesh position={[0, 8, 36]} rotation={[-0.06, Math.PI, 0]}>
+      <planeGeometry args={[74, 32]} />
+      <meshBasicMaterial map={boardTex ?? undefined} color={boardTex ? '#ffffff' : '#f3aa00'} toneMapped={false} />
+    </mesh>
+  );
+}
+
 export function TrendingDistrict() {
   const isNight = useCityStore(s => s.isNight);
   const trendingRepos = useTrendingStore(s => s.trendingRepos);
@@ -348,11 +380,13 @@ export function TrendingDistrict() {
       <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[ZONE_SIZE, ZONE_SIZE]} />
         <meshLambertMaterial
-          color="#5a9e28"
+          color="#9fd63a"
           emissive={isNight ? '#1a4a0a' : '#000000'}
           emissiveIntensity={isNight ? 0.5 : 0}
         />
       </mesh>
+
+      <ReferenceTrendingBoard />
 
       {/* ── District border ── */}
       <DistrictBorder />
@@ -362,7 +396,7 @@ export function TrendingDistrict() {
 
       {/* ── Entrance sign arch ── */}
       {entranceTexture && (
-        <mesh position={[0, 4.5, TRENDING_HALF + 1.5]} rotation={[0, Math.PI, 0]}>
+        <mesh position={[0, 4.5, TRENDING_HALF - 2]} rotation={[0, Math.PI, 0]}>
           <planeGeometry args={[10, 3.75]} />
           <meshBasicMaterial map={entranceTexture} side={THREE.DoubleSide} />
         </mesh>

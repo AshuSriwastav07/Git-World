@@ -1,5 +1,4 @@
-// Combined daily refresh: SV park + Trending repos + Rank recalculation
-// Single cron endpoint to stay within Vercel hobby tier limits
+// Combined daily refresh: targeted SV company + targeted language + trending + rank recalculation
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -15,18 +14,29 @@ export async function GET(request: Request) {
   const results: Record<string, unknown> = {};
 
   try {
-    // 1. Refresh Silicon Valley park data
+    // 1. Refresh one company in Silicon Valley
     try {
-      const svRes = await fetch(`${origin}/api/silicon-valley/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const svRes = await fetch(`${origin}/api/cron/sv-contributors`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
       });
       results.svRefresh = await svRes.json();
     } catch (err) {
       results.svRefresh = { error: String(err) };
     }
 
-    // 2. Refresh trending repos
+    // 2. Refresh one language district
+    try {
+      const langRes = await fetch(`${origin}/api/cron/language-devs`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+      });
+      results.languageRefresh = await langRes.json();
+    } catch (err) {
+      results.languageRefresh = { error: String(err) };
+    }
+
+    // 3. Refresh trending repos
     try {
       const trendingRes = await fetch(`${origin}/api/trending/refresh`, {
         method: 'POST',
@@ -37,7 +47,7 @@ export async function GET(request: Request) {
       results.trendingRefresh = { error: String(err) };
     }
 
-    // 3. Recalculate ranks
+    // 4. Recalculate ranks
     try {
       const rankRes = await fetch(`${origin}/api/cron/recalculate-ranks`, {
         method: 'GET',
@@ -48,7 +58,7 @@ export async function GET(request: Request) {
       results.rankRecalc = { error: String(err) };
     }
 
-    // 4. Warm CDN snapshot after ranks are fresh
+    // 5. Warm CDN snapshot after ranks are fresh
     try {
       const snapRes = await fetch(`${origin}/api/city/snapshot`);
       results.snapshotWarm = { status: snapRes.status, ok: snapRes.ok };

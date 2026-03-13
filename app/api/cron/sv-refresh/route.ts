@@ -1,4 +1,4 @@
-// Cron: Daily Silicon Valley park data refresh
+// Cron: Legacy SV refresh entrypoint (kept for backward compatibility)
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -12,9 +12,9 @@ export async function GET(request: Request) {
 
   try {
     const origin = new URL(request.url).origin;
-    const res = await fetch(`${origin}/api/silicon-valley/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(`${origin}/api/cron/sv-contributors`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
     });
     const data = await res.json();
     return NextResponse.json({ ok: true, result: data });

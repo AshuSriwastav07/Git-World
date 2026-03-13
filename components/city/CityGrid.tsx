@@ -4,7 +4,14 @@ import { useRef, useEffect, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { useFrame, ThreeEvent } from '@react-three/fiber';
 import { useCityStore } from '@/lib/cityStore';
-import { slotToWorld, getBuildingDimensions, getGroundSize, isInsidePark } from '@/lib/cityLayout';
+import {
+  slotToWorld,
+  getBuildingDimensions,
+  getGroundSize,
+  isInsidePark,
+  isOnConnectorRoad,
+  CONNECTOR_ROAD_HALF_WIDTH,
+} from '@/lib/cityLayout';
 import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 import { preloadProfile } from '@/components/ui/ProfileModal';
 
@@ -78,30 +85,73 @@ function createWindowTexture(night: boolean): THREE.CanvasTexture {
 }
 
 /* ── Minecraft grass texture ── */
-function createGrassTexture(): THREE.CanvasTexture {
+function createGroundTexture(): THREE.CanvasTexture {
   const S = 64;
   const canvas = document.createElement('canvas');
   canvas.width = S; canvas.height = S;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#3a8c28';
+  ctx.fillStyle = '#72767d';
   ctx.fillRect(0, 0, S, S);
   const rng = (seed: number) => { let s = seed; return () => { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return ((s >>> 0) / 0xffffffff); }; };
   const r = rng(42069);
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       const v = r();
-      if (v < 0.3) { ctx.fillStyle = `rgba(20, 80, 15, ${0.15 + r() * 0.2})`; ctx.fillRect(x, y, 1, 1); }
-      else if (v < 0.45) { ctx.fillStyle = `rgba(90, 180, 50, ${0.15 + r() * 0.15})`; ctx.fillRect(x, y, 1, 1); }
-      else if (v < 0.5) { ctx.fillStyle = `rgba(120, 200, 80, ${0.2 + r() * 0.1})`; ctx.fillRect(x, y, 1, 1); }
+      if (v < 0.35) { ctx.fillStyle = `rgba(52, 56, 63, ${0.12 + r() * 0.18})`; ctx.fillRect(x, y, 1, 1); }
+      else if (v < 0.62) { ctx.fillStyle = `rgba(138, 143, 150, ${0.08 + r() * 0.14})`; ctx.fillRect(x, y, 1, 1); }
+      else if (v < 0.72) { ctx.fillStyle = `rgba(96, 101, 108, ${0.08 + r() * 0.12})`; ctx.fillRect(x, y, 1, 1); }
     }
   }
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)'; ctx.lineWidth = 1;
-  for (let i = 0; i < S; i += 8) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'; ctx.lineWidth = 1;
+  for (let i = 0; i < S; i += 8) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke();
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
   tex.needsUpdate = true;
   return tex;
+}
+
+function ConnectorRoads() {
+  return (
+    <group>
+      {/* Vertical connectors between parks (base only) */}
+      <mesh position={[0, 0.031, -39.5]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[CONNECTOR_ROAD_HALF_WIDTH * 2, 29]} />
+        <meshLambertMaterial color="#13171c" />
+      </mesh>
+      <mesh position={[0, 0.031, 69.5]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[CONNECTOR_ROAD_HALF_WIDTH * 2, 89]} />
+        <meshLambertMaterial color="#13171c" />
+      </mesh>
+
+      {/* Gate connectors at park edges */}
+      <mesh position={[0, 0.032, -54]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[36, 2]} />
+        <meshLambertMaterial color="#13171c" />
+      </mesh>
+      <mesh position={[0, 0.032, 114]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[36, 2]} />
+        <meshLambertMaterial color="#13171c" />
+      </mesh>
+
+      {/* Dashed lane markers */}
+      {Array.from({ length: 10 }).map((_, i) => (
+        <mesh key={`lane-top-${i}`} position={[0, 0.05, -52 + i * 2.8]}>
+          <boxGeometry args={[0.9, 0.02, 1.4]} />
+          <meshBasicMaterial color="#c8d0d8" />
+        </mesh>
+      ))}
+      {Array.from({ length: 24 }).map((_, i) => (
+        <mesh key={`lane-bottom-${i}`} position={[0, 0.05, 28 + i * 3.4]}>
+          <boxGeometry args={[0.9, 0.02, 1.7]} />
+          <meshBasicMaterial color="#c8d0d8" />
+        </mesh>
+      ))}
+    </group>
+  );
 }
 
 /* ── Street lamp — no React state subscription, materials updated imperatively ── */
@@ -331,7 +381,7 @@ export function CityGrid() {
       const slot = user.citySlot ?? index;
       const rank = index + 1;
       const pos = slotToWorld(slot);
-      if (isInsidePark(pos.x, pos.z)) return;
+      if (isInsidePark(pos.x, pos.z) || isOnConnectorRoad(pos.x, pos.z, 1.5)) return;
       const dims = getBuildingDimensions(rank, slot, user);
 
       const dist = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
@@ -434,7 +484,7 @@ export function CityGrid() {
       const g = groundRef.current;
       if (!g.userData._dayColor) {
         g.userData._dayColor = new THREE.Color('#ffffff');
-        g.userData._nightColor = new THREE.Color('#1a2a1a');
+        g.userData._nightColor = new THREE.Color('#2f343c');
         g.userData._current = new THREE.Color('#ffffff');
       }
       (g.userData._current as THREE.Color).copy(g.userData._nightColor).lerp(g.userData._dayColor, f);
@@ -549,9 +599,9 @@ export function CityGrid() {
 
   /* ── Ground ── */
   const groundSize = getGroundSize(sortedLogins.length);
-  const grassTex = useMemo(() => {
+  const groundTex = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    const tex = createGrassTexture();
+    const tex = createGroundTexture();
     tex.repeat.set(Math.max(Math.round(groundSize / 5), 12), Math.max(Math.round(groundSize / 5), 12));
     return tex;
   }, [groundSize]);
@@ -562,7 +612,7 @@ export function CityGrid() {
     const half = Math.floor(groundSize / 2);
     for (let x = -half + 10; x < half; x += 20) {
       for (let z = -half + 10; z < half; z += 20) {
-        if (!isInsidePark(x, z)) positions.push([x, 0, z]);
+        if (!isInsidePark(x, z) && !isOnConnectorRoad(x, z, 3)) positions.push([x, 0, z]);
       }
     }
     return positions;
@@ -573,8 +623,11 @@ export function CityGrid() {
       {/* Ground */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow={false}>
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshLambertMaterial ref={groundRef} map={grassTex ?? undefined} color={grassTex ? '#ffffff' : '#3a8c28'} />
+        <meshLambertMaterial ref={groundRef} map={groundTex ?? undefined} color={groundTex ? '#ffffff' : '#72767d'} />
       </mesh>
+
+      {/* Connector roads between parks (never inside park interiors) */}
+      <ConnectorRoads />
 
       {/* Street Lights */}
       {streetLights.map((pos, i) => <StreetLight key={`sl-${i}`} position={pos} />)}

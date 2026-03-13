@@ -42,7 +42,7 @@ function ensureValidPositions(needed: number) {
     const [gx, gz] = spiralCoords(_validPosProbe);
     const wx = gx * SLOT_PITCH;
     const wz = gz * SLOT_PITCH;
-    if (!isInsidePark(wx, wz)) {
+    if (!isInsidePark(wx, wz) && !isOnConnectorRoad(wx, wz, 1.5)) {
       _validWorldPos.push({ x: wx, z: wz });
     }
     _validPosProbe++;
@@ -136,22 +136,39 @@ export function getTier(rank: number): BuildingTier {
   return 5;
 }
 
-// Tech park world center — positioned adjacent to the spiral city
+// Tech park world center — middle hub (between Silicon Valley and Trending)
 export function getTechParkWorldCenter(): { x: number; z: number } {
-  return { x: -50, z: 50 };
+  return { x: 0, z: 0 };
 }
+
+// Connector-road geometry (base-only roads between parks, never inside parks)
+export const CONNECTOR_ROAD_HALF_WIDTH = 5;
 
 // Park occupies a 50×50 region; check if a world position falls inside
 const PARK_HALF = 25;
 
-// Silicon Valley Park — rectangular park embedded in the city (200×200)
-export const SV_CENTER = { x: 75, z: 75 };
+// Silicon Valley Park — top district in the stacked city layout
+export const SV_CENTER = { x: 0, z: -165 };
 export const SV_RADIUS = 80; // kept for backward compat
 export const SV_HALF = 110;   // half-extent of 220×220 rectangular park (8 company campuses)
 
-// Trending Repositories District — southwest of city
-export const TRENDING_CENTER = { x: -120, z: 120 };
+// Trending Repositories District — bottom district in the stacked city layout
+export const TRENDING_CENTER = { x: 0, z: 165 };
 export const TRENDING_HALF = 50; // 100×100 zone
+
+export function isOnConnectorRoad(wx: number, wz: number, margin = 0): boolean {
+  const half = CONNECTOR_ROAD_HALF_WIDTH + margin;
+  const onSpine = Math.abs(wx) <= half && (
+    (wz >= -54 && wz <= -25) || // between Silicon Valley and Tech Park
+    (wz >= 25 && wz <= 114)     // between Tech Park and Trending District
+  );
+
+  // Short gate connectors at park edges
+  const onTopGate = Math.abs(wz + 54) <= (1 + margin) && wx >= -18 - margin && wx <= 18 + margin;
+  const onBottomGate = Math.abs(wz - 114) <= (1 + margin) && wx >= -18 - margin && wx <= 18 + margin;
+
+  return onSpine || onTopGate || onBottomGate;
+}
 
 export function isInsidePark(wx: number, wz: number): boolean {
   const pc = getTechParkWorldCenter();

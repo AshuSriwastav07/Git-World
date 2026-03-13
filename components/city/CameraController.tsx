@@ -10,8 +10,8 @@ import { useCityStore } from '@/lib/cityStore';
 import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 
 /* ── Default camera position ── */
-const DEFAULT_POS = new THREE.Vector3(80, 55, 160);
-const DEFAULT_TGT = new THREE.Vector3(0, 5, 0);
+const DEFAULT_POS = new THREE.Vector3(0, 140, 300);
+const DEFAULT_TGT = new THREE.Vector3(0, 8, 0);
 
 /* ── Pre-allocated WASD vectors (avoid GC pressure in useFrame) ── */
 const _fwd = new THREE.Vector3();

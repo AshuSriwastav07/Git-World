@@ -9,7 +9,6 @@ import * as THREE from 'three';
 import { useCityStore } from '@/lib/cityStore';
 import { SV_CENTER, SV_HALF } from '@/lib/cityLayout';
 import { BurjKhalifaTower } from './svpark/BurjKhalifaTower';
-import { FlyingBanners } from './svpark/FlyingBanners';
 import { LanguageDistrict, type LanguageDev } from './svpark/LanguageDistrict';
 import { LanguageMonument } from './svpark/LanguageMonument';
 import { AppleQuadrant } from './svpark/AppleQuadrant';
@@ -75,63 +74,6 @@ const LANGUAGE_DISTRICTS: { language: string; color: string; gridX: number; grid
   { language: 'Kotlin',     color: '#7f52ff', gridX: 3, gridZ: 1 },
 ];
 
-// Canvas-texture banner factory
-function createBannerTexture(text: string, bgColor: string, textColor: string): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d')!;
-
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, 512, 128);
-
-  ctx.strokeStyle = textColor;
-  ctx.lineWidth = 4;
-  ctx.strokeRect(2, 2, 508, 124);
-
-  ctx.fillStyle = textColor;
-  ctx.font = 'bold 48px Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, 256, 64);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  return tex;
-}
-
-// Banner component
-function ParkBanner({ text, bgColor, textColor, position, rotation }: {
-  text: string;
-  bgColor: string;
-  textColor: string;
-  position: [number, number, number];
-  rotation?: [number, number, number];
-}) {
-  const tex = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    return createBannerTexture(text, bgColor, textColor);
-  }, [text, bgColor, textColor]);
-
-  return (
-    <group position={position} rotation={rotation}>
-      <mesh position={[-2.5, -1.5, 0]}>
-        <boxGeometry args={[0.15, 3, 0.15]} />
-        <meshLambertMaterial color="#888" />
-      </mesh>
-      <mesh position={[2.5, -1.5, 0]}>
-        <boxGeometry args={[0.15, 3, 0.15]} />
-        <meshLambertMaterial color="#888" />
-      </mesh>
-      <mesh>
-        <planeGeometry args={[5, 1.25]} />
-        <meshBasicMaterial map={tex} side={THREE.DoubleSide} />
-      </mesh>
-    </group>
-  );
-}
-
 // Rectangular perimeter fence with hedge
 function RectFence({ halfW, halfH, gapPositions }: {
   halfW: number;
@@ -193,43 +135,35 @@ function RectFence({ halfW, halfH, gapPositions }: {
   );
 }
 
-// Central Boulevard banner arch — double-sided
-function BoulevardArch({ position }: { position: [number, number, number] }) {
-  const frontTex = useMemo(() => {
+function ReferenceTopHeader() {
+  const headerTex = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    return createBannerTexture('SILICON VALLEY', '#1a1a2e', '#d4a017');
-  }, []);
-  const backTex = useMemo(() => {
-    if (typeof window === 'undefined') return null;
-    return createBannerTexture('GIT WORLD', '#090612', '#f5c518');
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 180;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#f8d500';
+    ctx.fillRect(0, 0, 1024, 180);
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.setLineDash([18, 10]);
+    ctx.lineWidth = 8;
+    ctx.strokeRect(10, 10, 1004, 160);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#121212';
+    ctx.font = 'bold 82px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SILICON VALLEY', 512, 95);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
   }, []);
 
   return (
-    <group position={position}>
-      {/* Left pillar */}
-      <mesh position={[-8, 4, 0]}>
-        <boxGeometry args={[1, 8, 1]} />
-        <meshLambertMaterial color="#555" />
-      </mesh>
-      {/* Right pillar */}
-      <mesh position={[8, 4, 0]}>
-        <boxGeometry args={[1, 8, 1]} />
-        <meshLambertMaterial color="#555" />
-      </mesh>
-      {/* Top beam */}
-      <mesh position={[0, 8.2, 0]}>
-        <boxGeometry args={[17, 0.5, 1.2]} />
-        <meshLambertMaterial color="#444" />
-      </mesh>
-      {/* Front banner (facing south/languages) */}
-      <mesh position={[0, 6.5, 0.55]}>
-        <planeGeometry args={[14, 2]} />
-        <meshBasicMaterial map={frontTex} side={THREE.FrontSide} />
-      </mesh>
-      {/* Back banner (facing north/companies) */}
-      <mesh position={[0, 6.5, -0.55]}>
-        <planeGeometry args={[14, 2]} />
-        <meshBasicMaterial map={backTex} side={THREE.FrontSide} />
+    <group>
+      <mesh position={[0, 14, -102]} rotation={[-0.22, 0, 0]}>
+        <planeGeometry args={[82, 13]} />
+        <meshBasicMaterial map={headerTex ?? undefined} color={headerTex ? '#ffffff' : '#f8d500'} toneMapped={false} />
       </mesh>
     </group>
   );
@@ -272,11 +206,13 @@ export function SiliconValleyPark() {
       <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[PARK_HALF * 2, PARK_HALF * 2]} />
         <meshLambertMaterial
-          color="#5a9e28"
+          color="#9fd63a"
           emissive={isNight ? '#1a4a0a' : '#000'}
           emissiveIntensity={isNight ? 0.5 : 0}
         />
       </mesh>
+
+      <ReferenceTopHeader />
 
       {/* ── Rectangular perimeter fence ── */}
       <RectFence
@@ -302,62 +238,12 @@ export function SiliconValleyPark() {
         </mesh>
       </group>
 
-      {/* ── West entrance banner ── */}
-      <ParkBanner
-        text="SILICON VALLEY"
-        bgColor="#1a1a2e"
-        textColor="#d4a017"
-        position={[-(PARK_HALF - 1), 4, 0]}
-        rotation={[0, Math.PI / 2, 0]}
-      />
-      {isNight && (
-        <pointLight position={[-(PARK_HALF - 1), 4, 0]} color="#d4a017" intensity={3} distance={12} />
-      )}
-
-      {/* ═══ MAIN BOULEVARD (z = 26, divides companies from languages) ═══ */}
-      <mesh position={[0, 0.06, 26]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 8]} />
-        <meshLambertMaterial color="#8B7355" />
-      </mesh>
-      <mesh position={[0, 0.07, 22]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
-        <meshLambertMaterial color="#d4a017" />
-      </mesh>
-      <mesh position={[0, 0.07, 30]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PARK_HALF * 2, 0.5]} />
-        <meshLambertMaterial color="#d4a017" />
-      </mesh>
-
-      {/* ── Boulevard banner arches ── */}
-      <BoulevardArch position={[0, 0, 26]} />
-      <BoulevardArch position={[-55, 0, 26]} />
-      <BoulevardArch position={[55, 0, 26]} />
-
-      {/* ── Burj Khalifa Tower (center of main boulevard) ── */}
+      {/* ── Burj Khalifa Tower (central plaza, no road inside park) ── */}
       <group position={[0, 0, 26]}>
         <BurjKhalifaTower />
-        <FlyingBanners />
       </group>
 
       {/* ═══ NORTH — COMPANY CAMPUSES (single row) ═══ */}
-
-      {/* Company banners at each campus */}
-      <ParkBanner text="APPLE" bgColor="#f5f5f7" textColor="#333333"
-        position={[COMPANY_POSITIONS.apple[0], 4, COMPANY_POSITIONS.apple[2] + 22]} />
-      <ParkBanner text="GOOGLE" bgColor="#ffffff" textColor="#4285f4"
-        position={[COMPANY_POSITIONS.google[0], 4, COMPANY_POSITIONS.google[2] + 22]} />
-      <ParkBanner text="NVIDIA" bgColor="#1a1a1a" textColor="#76b900"
-        position={[COMPANY_POSITIONS.nvidia[0], 4, COMPANY_POSITIONS.nvidia[2] + 22]} />
-      <ParkBanner text="META" bgColor="#0a1628" textColor="#0082fb"
-        position={[COMPANY_POSITIONS.meta[0], 4, COMPANY_POSITIONS.meta[2] + 22]} />
-      <ParkBanner text="AMAZON" bgColor="#232F3E" textColor="#FF9900"
-        position={[COMPANY_POSITIONS.amazon[0], 4, COMPANY_POSITIONS.amazon[2] + 22]} />
-      <ParkBanner text="MICROSOFT" bgColor="#f3f3f3" textColor="#00a4ef"
-        position={[COMPANY_POSITIONS.microsoft[0], 4, COMPANY_POSITIONS.microsoft[2] + 22]} />
-      <ParkBanner text="OPENAI" bgColor="#ffffff" textColor="#10a37f"
-        position={[COMPANY_POSITIONS.openai[0], 4, COMPANY_POSITIONS.openai[2] + 22]} />
-      <ParkBanner text="NETFLIX" bgColor="#221f1f" textColor="#E50914"
-        position={[COMPANY_POSITIONS.netflix[0], 4, COMPANY_POSITIONS.netflix[2] + 22]} />
 
       {/* Four company quadrants (row 1) */}
       <group position={COMPANY_POSITIONS.apple}>
@@ -421,71 +307,10 @@ export function SiliconValleyPark() {
         );
       })}
 
-      {/* ── Hedge row north of boulevard ── */}
-      {Array.from({ length: 22 }).map((_, i) => (
-        <mesh key={`hedge-n-${i}`} position={[-105 + i * 10, 0.5, 20]} >
-          <boxGeometry args={[8, 1, 0.6]} />
-          <meshLambertMaterial color="#2d5a27" />
-        </mesh>
-      ))}
-
-      {/* ── Hedge row south of boulevard ── */}
-      {Array.from({ length: 22 }).map((_, i) => (
-        <mesh key={`hedge-s-${i}`} position={[-105 + i * 10, 0.5, 32]} >
-          <boxGeometry args={[8, 1, 0.6]} />
-          <meshLambertMaterial color="#2d5a27" />
-        </mesh>
-      ))}
-
-      {/* ── Boulevard lamp posts ── */}
-      {Array.from({ length: 10 }).map((_, i) => {
-        const x = -80 + i * 20;
-        return (
-          <group key={`blamp-${i}`}>
-            {/* North side lamp */}
-            <group position={[x, 0, 19]}>
-              <mesh position={[0, 2, 0]}>
-                <boxGeometry args={[0.15, 4, 0.15]} />
-                <meshLambertMaterial color="#555" />
-              </mesh>
-              <mesh position={[0, 4.2, 0]}>
-                <sphereGeometry args={[0.4, 8, 8]} />
-                <meshLambertMaterial
-                  color="#ffcc55"
-                  emissive={isNight ? '#ffcc55' : '#000'}
-                  emissiveIntensity={isNight ? 1.5 : 0}
-                />
-              </mesh>
-              {isNight && (
-                <pointLight position={[0, 4.2, 0]} color="#ffaa33" intensity={2} distance={15} />
-              )}
-            </group>
-            {/* South side lamp */}
-            <group position={[x, 0, 33]}>
-              <mesh position={[0, 2, 0]}>
-                <boxGeometry args={[0.15, 4, 0.15]} />
-                <meshLambertMaterial color="#555" />
-              </mesh>
-              <mesh position={[0, 4.2, 0]}>
-                <sphereGeometry args={[0.4, 8, 8]} />
-                <meshLambertMaterial
-                  color="#ffcc55"
-                  emissive={isNight ? '#ffcc55' : '#000'}
-                  emissiveIntensity={isNight ? 1.5 : 0}
-                />
-              </mesh>
-              {isNight && (
-                <pointLight position={[0, 4.2, 0]} color="#ffaa33" intensity={2} distance={15} />
-              )}
-            </group>
-          </group>
-        );
-      })}
-
       {/* ── Park ambient lighting (night) ── */}
       {isNight && (
         <>
-          {/* Boulevard glow */}
+          {/* Central plaza glow */}
           <pointLight position={[0, 8, 26]} color="#ffe8b0" intensity={3} distance={PARK_HALF * 1.2} decay={1.5} />
           {/* Company zone lights */}
           <pointLight position={COMPANY_POSITIONS.apple} color="#c0c0c0" intensity={1.5} distance={40} />
@@ -496,7 +321,7 @@ export function SiliconValleyPark() {
           <pointLight position={COMPANY_POSITIONS.microsoft} color="#00a4ef" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.openai} color="#10a37f" intensity={1.5} distance={40} />
           <pointLight position={COMPANY_POSITIONS.netflix} color="#E50914" intensity={1.5} distance={40} />
-          {/* Boulevard south glow */}
+          {/* Language district glow */}
           <pointLight position={[0, 8, 60]} color="#ffe8b0" intensity={2} distance={60} />
         </>
       )}

@@ -439,7 +439,7 @@ export function TechPark() {
       {/* Park ground — dark green emissive at night */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[50, 50]} />
-        <meshLambertMaterial color="#5a9e28" emissive={isNight ? '#1a4a0a' : '#000000'} emissiveIntensity={isNight ? 0.5 : 0} />
+        <meshLambertMaterial color="#99cc2f" emissive={isNight ? '#2a4e0a' : '#000000'} emissiveIntensity={isNight ? 0.5 : 0} />
       </mesh>
 
       {/* Fence — north */}

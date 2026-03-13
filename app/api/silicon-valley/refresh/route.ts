@@ -68,6 +68,33 @@ const COMPANY_CONFIG: Record<string, CompanySource> = {
 
 const LANGUAGE_LIST = ['Python', 'JavaScript', 'TypeScript', 'Java', 'Rust', 'Go', 'C++', 'Kotlin'];
 
+type RefreshScope = {
+  company: string | null;
+  language: string | null;
+  skipCompanies: boolean;
+  skipLanguages: boolean;
+};
+
+function parseScope(request?: Request): RefreshScope {
+  if (!request) {
+    return { company: null, language: null, skipCompanies: false, skipLanguages: false };
+  }
+
+  const search = new URL(request.url).searchParams;
+  const companyRaw = search.get('company')?.toLowerCase() ?? null;
+  const languageRaw = search.get('language') ?? null;
+
+  const company = companyRaw && COMPANY_CONFIG[companyRaw] ? companyRaw : null;
+  const language = languageRaw && LANGUAGE_LIST.includes(languageRaw) ? languageRaw : null;
+
+  return {
+    company,
+    language,
+    skipCompanies: search.get('skipCompanies') === '1',
+    skipLanguages: search.get('skipLanguages') === '1',
+  };
+}
+
 // ── Bot detection ───────────────────────────────────────────────────────────
 
 const BOT_PATTERNS = [
@@ -310,9 +337,20 @@ async function fetchProfile(login: string): Promise<ProfileData | null> {
 // POST handler — full Silicon Valley refresh (org members)
 // ══════════════════════════════════════════════════════════════════════════════
 
-export async function POST() {
+export async function POST(request: Request) {
   const sb = getSupabaseServer();
   const log: string[] = [];
+  const scope = parseScope(request);
+
+  const companyParam = new URL(request.url).searchParams.get('company');
+  const languageParam = new URL(request.url).searchParams.get('language');
+
+  if (companyParam && !scope.company) {
+    return NextResponse.json({ success: false, error: `Invalid company '${companyParam}'`, log }, { status: 400 });
+  }
+  if (languageParam && !scope.language) {
+    return NextResponse.json({ success: false, error: `Invalid language '${languageParam}'`, log }, { status: 400 });
+  }
 
   try {
     // ── PHASE 1: Fetch public org members + profiles, rank, take top 30 per company ──
@@ -320,202 +358,231 @@ export async function POST() {
     // company → { login, profile, score, source }[]
     const companyRanked = new Map<string, { login: string; profile: ProfileData; score: number; source: string }[]>();
 
-    const companyEntries = Object.entries(COMPANY_CONFIG);
-    for (let ci = 0; ci < companyEntries.length; ci++) {
-      const [company, config] = companyEntries[ci];
+    if (!scope.skipCompanies) {
+      const companyEntries = scope.company
+        ? ([[scope.company, COMPANY_CONFIG[scope.company]]] as [string, CompanySource][])
+        : (Object.entries(COMPANY_CONFIG) as [string, CompanySource][]);
 
-      // Delay between companies to avoid GitHub rate limiting
-      if (ci > 0) {
-        log.push(`Phase 1: Waiting 2s before fetching ${company}...`);
-        await new Promise(r => setTimeout(r, 2000));
-      }
+      for (let ci = 0; ci < companyEntries.length; ci++) {
+        const [company, config] = companyEntries[ci];
 
-      const seenLogins = new Set<string>();
-      let allMembers: { member: OrgMember; source: string; orgName: string }[] = [];
-
-      // Step 1: Try each org in the list
-      for (let oi = 0; oi < config.orgs.length; oi++) {
-        const orgName = config.orgs[oi];
-        if (oi > 0) await new Promise(r => setTimeout(r, 500));
-        const orgMembers = await fetchOrgMembers(orgName);
-        log.push(`Phase 1: ${company} — org '${orgName}' returned ${orgMembers.length} members`);
-        for (const m of orgMembers) {
-          const key = m.login.toLowerCase();
-          if (!seenLogins.has(key)) {
-            seenLogins.add(key);
-            allMembers.push({ member: m, source: 'org_member', orgName });
-          }
+        // Delay between companies to avoid GitHub rate limiting
+        if (ci > 0) {
+          log.push(`Phase 1: Waiting 2s before fetching ${company}...`);
+          await new Promise(r => setTimeout(r, 2000));
         }
-      }
 
-      log.push(`Phase 1: ${company} — ${seenLogins.size} unique members after all orgs`);
+        const seenLogins = new Set<string>();
+        let allMembers: { member: OrgMember; source: string; orgName: string }[] = [];
 
-      // Step 2: If still below 30, supplement with search queries
-      if (seenLogins.size < 30) {
-        for (const term of config.searchTerms) {
-          if (seenLogins.size >= 60) break; // enough candidates
-          const searchMembers = await searchUsersByCompany(term);
-          let added = 0;
-          for (const m of searchMembers) {
+        // Step 1: Try each org in the list
+        for (let oi = 0; oi < config.orgs.length; oi++) {
+          const orgName = config.orgs[oi];
+          if (oi > 0) await new Promise(r => setTimeout(r, 500));
+          const orgMembers = await fetchOrgMembers(orgName);
+          log.push(`Phase 1: ${company} — org '${orgName}' returned ${orgMembers.length} members`);
+          for (const m of orgMembers) {
             const key = m.login.toLowerCase();
             if (!seenLogins.has(key)) {
               seenLogins.add(key);
-              allMembers.push({ member: m, source: 'profile_search', orgName: term });
-              added++;
+              allMembers.push({ member: m, source: 'org_member', orgName });
             }
           }
-          log.push(`Phase 1: ${company} — search '${term}' added ${added} new users`);
         }
-      }
 
-      // Filter: type=User, not a bot, cap at 50 candidates
-      const validMembers = allMembers
-        .filter(m => m.member.type === 'User' && !isBot(m.member.login))
-        .slice(0, 40);
-      log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter (capped at 40)`);
+        log.push(`Phase 1: ${company} — ${seenLogins.size} unique members after all orgs`);
 
-      // Step A: Quick-score in batches of 5 (1 API call each, 1s delay between batches)
-      const quickScored: { login: string; qs: QuickScore; source: string }[] = [];
-
-      for (let i = 0; i < validMembers.length; i += 5) {
-        if (i > 0) await new Promise(r => setTimeout(r, 400));
-        const batch = validMembers.slice(i, i + 5);
-        const results = await Promise.all(batch.map(m => quickScoreUser(m.member.login)));
-
-        for (let j = 0; j < results.length; j++) {
-          const qs = results[j];
-          if (!qs) continue;
-
-          const entry = batch[j];
-
-          // For search-sourced users, verify company field
-          if (entry.source === 'profile_search' && qs.company) {
-            const profileCo = qs.company.toLowerCase().replace(/^@/, '');
-            const matches = config.profileCompanyMatch.some(
-              match => profileCo.includes(match)
-            );
-            if (!matches) continue;
+        // Step 2: If still below 30, supplement with search queries
+        if (seenLogins.size < 30) {
+          for (const term of config.searchTerms) {
+            if (seenLogins.size >= 60) break; // enough candidates
+            const searchMembers = await searchUsersByCompany(term);
+            let added = 0;
+            for (const m of searchMembers) {
+              const key = m.login.toLowerCase();
+              if (!seenLogins.has(key)) {
+                seenLogins.add(key);
+                allMembers.push({ member: m, source: 'profile_search', orgName: term });
+                added++;
+              }
+            }
+            log.push(`Phase 1: ${company} — search '${term}' added ${added} new users`);
           }
-
-          quickScored.push({ login: qs.login, qs, source: entry.source });
         }
-      }
 
-      // Take top 25 by quick score for full profile fetch
-      quickScored.sort((a, b) => b.qs.score - a.qs.score);
-      const topCandidates = quickScored.slice(0, 25);
-      log.push(`Phase 1: ${company} — ${quickScored.length} quick-scored, top ${topCandidates.length} selected for full profile`);
+        // Filter: type=User, not a bot, cap at 50 candidates
+        const validMembers = allMembers
+          .filter(m => m.member.type === 'User' && !isBot(m.member.login))
+          .slice(0, 40);
+        log.push(`Phase 1: ${company} — ${validMembers.length} after User+bot filter (capped at 40)`);
 
-      // Step B: Full profile fetch in batches of 5 (repos + events, 2s delay between batches)
-      const scored: { login: string; profile: ProfileData; score: number; source: string }[] = [];
+        // Step A: Quick-score in batches of 5 (1 API call each, 1s delay between batches)
+        const quickScored: { login: string; qs: QuickScore; source: string }[] = [];
 
-      for (let i = 0; i < topCandidates.length; i += 5) {
-        if (i > 0) await new Promise(r => setTimeout(r, 800));
-        const batch = topCandidates.slice(i, i + 5);
-        const profiles = await Promise.all(batch.map(c => fetchProfile(c.login)));
+        for (let i = 0; i < validMembers.length; i += 5) {
+          if (i > 0) await new Promise(r => setTimeout(r, 400));
+          const batch = validMembers.slice(i, i + 5);
+          const results = await Promise.all(batch.map(m => quickScoreUser(m.member.login)));
 
-        for (let j = 0; j < profiles.length; j++) {
-          const profile = profiles[j];
-          if (!profile) continue;
-          const score = (profile.followers * 2) + profile.totalStars;
-          scored.push({ login: profile.login, profile, score, source: batch[j].source });
+          for (let j = 0; j < results.length; j++) {
+            const qs = results[j];
+            if (!qs) continue;
+
+            const entry = batch[j];
+
+            // For search-sourced users, verify company field
+            if (entry.source === 'profile_search' && qs.company) {
+              const profileCo = qs.company.toLowerCase().replace(/^@/, '');
+              const matches = config.profileCompanyMatch.some(
+                match => profileCo.includes(match)
+              );
+              if (!matches) continue;
+            }
+
+            quickScored.push({ login: qs.login, qs, source: entry.source });
+          }
         }
+
+        // Take top 25 by quick score for full profile fetch
+        quickScored.sort((a, b) => b.qs.score - a.qs.score);
+        const topCandidates = quickScored.slice(0, 25);
+        log.push(`Phase 1: ${company} — ${quickScored.length} quick-scored, top ${topCandidates.length} selected for full profile`);
+
+        // Step B: Full profile fetch in batches of 5 (repos + events, 2s delay between batches)
+        const scored: { login: string; profile: ProfileData; score: number; source: string }[] = [];
+
+        for (let i = 0; i < topCandidates.length; i += 5) {
+          if (i > 0) await new Promise(r => setTimeout(r, 800));
+          const batch = topCandidates.slice(i, i + 5);
+          const profiles = await Promise.all(batch.map(c => fetchProfile(c.login)));
+
+          for (let j = 0; j < profiles.length; j++) {
+            const profile = profiles[j];
+            if (!profile) continue;
+            const score = (profile.followers * 2) + profile.totalStars;
+            scored.push({ login: profile.login, profile, score, source: batch[j].source });
+          }
+        }
+
+        // Sort by score desc, take top 30
+        scored.sort((a, b) => b.score - a.score);
+        companyRanked.set(company, scored.slice(0, 30));
+
+        log.push(`Phase 1: ${company} — ${scored.length} full profiles, top ${Math.min(scored.length, 30)} selected`);
       }
-
-      // Sort by score desc, take top 30
-      scored.sort((a, b) => b.score - a.score);
-      companyRanked.set(company, scored.slice(0, 30));
-
-      log.push(`Phase 1: ${company} — ${scored.length} full profiles, top ${Math.min(scored.length, 30)} selected`);
     }
 
     // ── PHASE 2: Cross-company deduplication ───────────────────────────────
 
     const loginCompanies = new Map<string, { company: string; score: number; source: string }[]>();
 
-    for (const [company, ranked] of companyRanked) {
-      for (const entry of ranked) {
-        const key = entry.login.toLowerCase();
-        const entries = loginCompanies.get(key) ?? [];
-        entries.push({ company, score: entry.score, source: entry.source });
-        loginCompanies.set(key, entries);
+    if (!scope.skipCompanies) {
+      for (const [company, ranked] of companyRanked) {
+        for (const entry of ranked) {
+          const key = entry.login.toLowerCase();
+          const entries = loginCompanies.get(key) ?? [];
+          entries.push({ company, score: entry.score, source: entry.source });
+          loginCompanies.set(key, entries);
+        }
       }
     }
 
     const removals = new Map<string, Set<string>>();
 
-    for (const [loginKey, entries] of loginCompanies) {
-      if (entries.length <= 1) continue;
-      entries.sort((a, b) => b.score - a.score);
-      const keepCompany = entries[0].company;
+    if (!scope.skipCompanies) {
+      for (const [loginKey, entries] of loginCompanies) {
+        if (entries.length <= 1) continue;
+        entries.sort((a, b) => b.score - a.score);
+        const keepCompany = entries[0].company;
 
-      for (let i = 1; i < entries.length; i++) {
-        const removeFrom = entries[i].company;
-        if (!removals.has(removeFrom)) removals.set(removeFrom, new Set());
-        removals.get(removeFrom)!.add(loginKey);
+        for (let i = 1; i < entries.length; i++) {
+          const removeFrom = entries[i].company;
+          if (!removals.has(removeFrom)) removals.set(removeFrom, new Set());
+          removals.get(removeFrom)!.add(loginKey);
+        }
+
+        log.push(`Phase 2: Dedup — ${loginKey} kept in ${keepCompany}, removed from ${entries.slice(1).map(e => e.company).join(', ')}`);
       }
-
-      log.push(`Phase 2: Dedup — ${loginKey} kept in ${keepCompany}, removed from ${entries.slice(1).map(e => e.company).join(', ')}`);
     }
 
-    for (const [company, loginsToRemove] of removals) {
-      const ranked = companyRanked.get(company);
-      if (!ranked) continue;
-      companyRanked.set(
-        company,
-        ranked.filter(e => !loginsToRemove.has(e.login.toLowerCase()))
-      );
+    if (!scope.skipCompanies) {
+      for (const [company, loginsToRemove] of removals) {
+        const ranked = companyRanked.get(company);
+        if (!ranked) continue;
+        companyRanked.set(
+          company,
+          ranked.filter(e => !loginsToRemove.has(e.login.toLowerCase()))
+        );
+      }
     }
 
     // ── PHASE 3: Upsert profiles into city_users + sv_contributors ─────────
 
     const finalContribs: { company: string; login: string; score: number; source: string }[] = [];
 
-    // Delete ALL existing sv_contributors (old data)
-    await sb.from('sv_contributors').delete().neq('login', '');
+    if (!scope.skipCompanies) {
+      if (scope.company) {
+        await sb.from('sv_contributors').delete().eq('company', scope.company);
+      } else {
+        // Delete ALL existing sv_contributors (old data)
+        await sb.from('sv_contributors').delete().neq('login', '');
+      }
+    }
 
-    for (const [company, ranked] of companyRanked) {
-      let upserted = 0;
+    if (!scope.skipCompanies) {
+      for (const [company, ranked] of companyRanked) {
+        let upserted = 0;
 
-      for (const entry of ranked) {
-        const result = await upsertUser({
-          ...entry.profile,
-          addedBy: `silicon-valley-${company}`,
-        });
+        for (const entry of ranked) {
+          const result = await upsertUser({
+            ...entry.profile,
+            addedBy: `silicon-valley-${company}`,
+          });
 
-        if (result) {
-          const { error: upsertErr } = await sb.from('sv_contributors').upsert({
-            login: result.login,
-            company,
-            contributions: entry.score,
-            membership_verified: entry.source === 'org_member',
-            org_name: COMPANY_CONFIG[company]?.orgs[0] ?? company,
-            source: entry.source,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'login' });
+          if (result) {
+            const { error: upsertErr } = await sb.from('sv_contributors').upsert({
+              login: result.login,
+              company,
+              contributions: entry.score,
+              membership_verified: entry.source === 'org_member',
+              org_name: COMPANY_CONFIG[company]?.orgs[0] ?? company,
+              source: entry.source,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'login' });
 
-          if (upsertErr) {
-            log.push(`Phase 3: ERROR upserting ${result.login} — ${upsertErr.message}`);
-            console.error(`[sv-refresh] sv_contributors upsert failed for ${result.login}:`, upsertErr.message);
-          } else {
-            finalContribs.push({ company, login: result.login, score: entry.score, source: entry.source });
-            upserted++;
+            if (upsertErr) {
+              log.push(`Phase 3: ERROR upserting ${result.login} — ${upsertErr.message}`);
+              console.error(`[sv-refresh] sv_contributors upsert failed for ${result.login}:`, upsertErr.message);
+            } else {
+              finalContribs.push({ company, login: result.login, score: entry.score, source: entry.source });
+              upserted++;
+            }
           }
         }
-      }
 
-      log.push(`Phase 3: ${company} — upserted ${upserted} verified members`);
+        log.push(`Phase 3: ${company} — upserted ${upserted} verified members`);
+      }
     }
 
     log.push(`Phase 3: Total ${finalContribs.length} contributors inserted`);
 
     // ── PHASE 4: Language devs — query city_users by top_language ───────────
 
-    await sb.from('sv_language_devs').delete().neq('login', '');
+    if (!scope.skipLanguages) {
+      if (scope.language) {
+        await sb.from('sv_language_devs').delete().eq('language', scope.language);
+      } else {
+        await sb.from('sv_language_devs').delete().neq('login', '');
+      }
+    }
 
     const languageResults: Record<string, number> = {};
 
-    for (const language of LANGUAGE_LIST) {
+    const languagesToProcess = scope.skipLanguages
+      ? []
+      : (scope.language ? [scope.language] : LANGUAGE_LIST);
+
+    for (const language of languagesToProcess) {
       // Query existing city_users who have this top_language
       const { data: langUsers } = await sb
         .from('city_users')
@@ -565,8 +632,10 @@ export async function POST() {
 
     // ── PHASE 5: Recalculate ranks ─────────────────────────────────────────
 
-    await recalculateRanks();
-    log.push('Phase 5: Ranks recalculated');
+    if (!scope.skipCompanies || !scope.skipLanguages) {
+      await recalculateRanks();
+      log.push('Phase 5: Ranks recalculated');
+    }
 
     // ── Build result summary ───────────────────────────────────────────────
 
@@ -581,6 +650,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
+      scope,
       totalContributors: finalContribs.length,
       companies: companySummary,
       languages: languageResults,
@@ -596,6 +666,6 @@ export async function POST() {
 }
 
 // GET handler — allows triggering refresh from browser URL bar
-export async function GET() {
-  return POST();
+export async function GET(request: Request) {
+  return POST(request);
 }
