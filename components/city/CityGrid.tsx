@@ -469,28 +469,34 @@ export function CityGrid() {
     const f = dayFactorRef.current;
     const nightF = 1 - f;
 
-    // Lamp material
-    const lamp = getSharedLampMat();
-    _lampEmissive.copy(LAMP_DAY_EMISSIVE).lerp(LAMP_NIGHT_EMISSIVE, nightF);
-    lamp.emissive.copy(_lampEmissive);
-    lamp.emissiveIntensity = nightF * 2.0;
+    // Only update materials if we haven't reached the target day factor yet
+    if (Math.abs(f - targetDay) > 0.001) {
+      // Lamp material
+      const lamp = getSharedLampMat();
+      _lampEmissive.copy(LAMP_DAY_EMISSIVE).lerp(LAMP_NIGHT_EMISSIVE, nightF);
+      lamp.emissive.copy(_lampEmissive);
+      lamp.emissiveIntensity = nightF * 2.0;
 
-    // Glow material
-    const glow = getSharedGlowMat();
-    glow.opacity = nightF * 0.08;
+      // Glow material
+      const glow = getSharedGlowMat();
+      glow.opacity = nightF * 0.08;
 
-    // Ground color lerp (day: grass green, night: darker)
-    if (groundRef.current) {
-      const g = groundRef.current;
-      if (!g.userData._dayColor) {
-        g.userData._dayColor = new THREE.Color('#ffffff');
-        g.userData._nightColor = new THREE.Color('#2f343c');
-        g.userData._current = new THREE.Color('#ffffff');
+      // Ground color lerp (day: grass green, night: darker)
+      if (groundRef.current) {
+        const g = groundRef.current;
+        if (!g.userData._dayColor) {
+          g.userData._dayColor = new THREE.Color('#ffffff');
+          g.userData._nightColor = new THREE.Color('#2f343c');
+          g.userData._current = new THREE.Color('#ffffff');
+        }
+        (g.userData._current as THREE.Color).copy(g.userData._nightColor).lerp(g.userData._dayColor, f);
+        g.color.copy(g.userData._current);
       }
-      (g.userData._current as THREE.Color).copy(g.userData._nightColor).lerp(g.userData._dayColor, f);
-      g.color.copy(g.userData._current);
+      _state.invalidate();
+    } else {
+      // Ensure it's exactly the target so we don't drift, but don't invalidate
+      dayFactorRef.current = targetDay;
     }
-    _state.invalidate();
   });
 
   useFrame((riseState) => {

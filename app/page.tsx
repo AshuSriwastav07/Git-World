@@ -137,16 +137,41 @@ export default function Home() {
 
       // Subscribe to Supabase realtime
       if (!cancelled) {
+        let rtBuffer: any[] = [];
+        let rtTimer: any = null;
         realtimeChannel = subscribeToNewUsers((user) => {
-          if (!cancelled) addUser(user);
+          if (!cancelled) {
+            rtBuffer.push(user);
+            if (!rtTimer) {
+              rtTimer = setTimeout(() => {
+                addUsers(rtBuffer);
+                rtBuffer = [];
+                rtTimer = null;
+              }, 1000);
+            }
+          }
         });
       }
 
       // Stream NEW GitHub users — auto-close after 5 minutes
       if (!cancelled) {
         const STREAM_MAX_MS = 5 * 60 * 1000;
+        let streamBuffer: any[] = [];
+        let streamTimer: any = null;
+
         stopStream = startDiscoveryStream(
-          (user) => { if (!cancelled) addUser(user); },
+          (user) => {
+            if (!cancelled) {
+              streamBuffer.push(user);
+              if (!streamTimer) {
+                streamTimer = setTimeout(() => {
+                  addUsers(streamBuffer);
+                  streamBuffer = [];
+                  streamTimer = null;
+                }, 1000);
+              }
+            }
+          },
           () => {},
           () => {},
         );

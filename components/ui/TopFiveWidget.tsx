@@ -10,13 +10,13 @@ const FONT = "'Press Start 2P', monospace";
 
 export function TopFiveWidget() {
   const users = useCityStore((s) => s.users);
+  const sortedLogins = useCityStore((s) => s.sortedLogins);
   const setSelectedUser = useCityStore((s) => s.setSelectedUser);
   const setFlyTarget = useCityStore((s) => s.setFlyTarget);
 
   const top5 = useMemo(() => {
-    const all = Array.from(users.values());
-    return all.sort((a, b) => b.totalScore - a.totalScore).slice(0, 5);
-  }, [users]);
+    return sortedLogins.slice(0, 5).map(login => users.get(login)!).filter(Boolean);
+  }, [sortedLogins, users]);
 
   if (top5.length === 0) return null;
 

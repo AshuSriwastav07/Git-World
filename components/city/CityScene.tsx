@@ -35,7 +35,7 @@ function SceneContent({ onReady }: { onReady?: () => void }) {
 
   return (
     <>
-      <AdaptiveDpr pixelated />
+      {/* Removed AdaptiveDpr to prevent the blurry/laggy visual scaling effect */}
 
       {/* ── SKY ENVIRONMENT (dome, sun, moon, clouds, stars, aurora, lighting) ── */}
       <SkyEnvironment />
