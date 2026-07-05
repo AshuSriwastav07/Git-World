@@ -133,7 +133,7 @@ export default function CameraController() {
 
   // ── Frame loop ──
   useFrame((state, rawDelta) => {
-    if (flightMode) return;
+    if (flightMode || activeMode === 'spiderman') return;
     const delta = Math.min(rawDelta, 0.06);
 
     // ── Cinematic camera sweep during intro ──
@@ -218,7 +218,7 @@ export default function CameraController() {
     if (cameraAnimating) state.invalidate();
   });
 
-  if (flightMode) return null;
+  if (flightMode || activeMode === 'spiderman') return null;
 
   // Auto-rotate: orbit slowly until user interacts
   const shouldAutoRotate = !userInteracted;

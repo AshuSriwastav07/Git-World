@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import type { SlimUser } from '@/lib/supabaseDb';
 import { slotToWorld, getBuildingDimensions } from '@/lib/cityLayout';
 
-export type ActiveMode = 'menu' | 'explore' | 'fly' | 'trending' | 'search' | 'leaderboard';
+export type ActiveMode = 'menu' | 'explore' | 'fly' | 'spiderman' | 'trending' | 'search' | 'leaderboard';
 
 interface CityStoreState {
   users: Map<string, SlimUser>;

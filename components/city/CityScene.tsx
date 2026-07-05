@@ -17,6 +17,7 @@ const TechPark = lazy(() => import('./TechPark').then(m => ({ default: m.TechPar
 const SiliconValleyPark = lazy(() => import('./SiliconValleyPark').then(m => ({ default: m.SiliconValleyPark })));
 const TrendingDistrict = lazy(() => import('./TrendingDistrict').then(m => ({ default: m.TrendingDistrict })));
 const AirplaneMode = lazy(() => import('./airplane/AirplaneMode').then(m => ({ default: m.AirplaneMode })));
+const SpiderManMode = lazy(() => import('./spiderman/SpiderManMode').then(m => ({ default: m.SpiderManMode })));
 
 /** Fires onReady after first frame renders — stops invalidating afterwards */
 function ReadySignal({ onReady }: { onReady: () => void }) {
@@ -33,6 +34,7 @@ function ReadySignal({ onReady }: { onReady: () => void }) {
 
 function SceneContent({ onReady }: { onReady?: () => void }) {
   const flightMode = useCityStore((s) => s.flightMode);
+  const spiderMode = useCityStore((s) => s.activeMode === 'spiderman');
 
   return (
     <>
@@ -64,6 +66,13 @@ function SceneContent({ onReady }: { onReady?: () => void }) {
 
       {/* Airplane */}
       {flightMode && <AirplaneMode />}
+
+      {/* Spider-Man street traversal */}
+      {spiderMode && (
+        <SceneErrorBoundary name="SpiderManMode">
+          <SpiderManMode />
+        </SceneErrorBoundary>
+      )}
 
       {/* Spotlight on selected building */}
       <GodRaySpotlight />
