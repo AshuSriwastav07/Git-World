@@ -206,14 +206,14 @@ export default function Home() {
     setLoadingDismissed(true);
   }, []);
 
-  // Three-state crossfade: only hide loading after canvas renders first frame
+  // Three-state crossfade: only hide loading after canvas renders first frame AND data landed
   useEffect(() => {
-    if (canvasReady && showLoading) {
+    if (canvasReady && dataReady && showLoading) {
       setLoadingProgress(100, 'City ready!');
       const t = setTimeout(() => setShowLoading(false), 100);
       return () => clearTimeout(t);
     }
-  }, [canvasReady, showLoading, setLoadingProgress]);
+  }, [canvasReady, dataReady, showLoading, setLoadingProgress]);
 
   // Mode menu selection handler
   const handleModeSelect = useCallback((mode: ActiveMode) => {
@@ -225,8 +225,8 @@ export default function Home() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
-      {/* Canvas mounts once data is ready */}
-      {dataReady && <CityScene onReady={handleCanvasReady} />}
+      {/* Canvas mounts immediately — shaders compile while data streams in */}
+      <CityScene onReady={handleCanvasReady} />
 
       {/* HUD shows after intro is done */}
       <HUD />
