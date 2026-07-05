@@ -86,7 +86,6 @@ export function NetflixBuilding({ position = [0, 0, 0], scale = 1 }: NetflixBuil
       const blink = Math.sin(t * 3) > 0;
       (antennaLightRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = blink ? 1.5 : 0.2;
     }
-    state.invalidate();
   });
 
   return (

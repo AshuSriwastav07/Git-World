@@ -31,7 +31,6 @@ export default function SittingCharacter({ user, position, cameraDistance = 999 
     if (groupRef.current) {
       groupRef.current.scale.setScalar(hovered ? 1.08 : 1.0);
     }
-    state.invalidate();
   });
 
   const handleClick = (e: THREE.Event & { stopPropagation: () => void }) => {

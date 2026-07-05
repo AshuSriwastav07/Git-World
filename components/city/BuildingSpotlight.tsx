@@ -47,7 +47,6 @@ export default function BuildingSpotlight({ user }: Props) {
       const mat = ringRef.current.material as THREE.MeshBasicMaterial;
       mat.opacity = 0.7 + 0.3 * Math.sin(t * 3);
     }
-    state.invalidate();
   });
 
   return (

@@ -153,7 +153,6 @@ function WalkingCharacter({ developer, waypoints, speed }: {
       wpIdx.current = (wpIdx.current + 1) % waypoints.length;
       progress.current = 0;
     }
-    state.invalidate();
   });
 
   return (
@@ -217,7 +216,6 @@ function SittingLaptopCharacter({ position, developer, facing = 0 }: {
       headRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 0.3 + position[0]) * 0.2;
       headRef.current.rotation.x = Math.sin(state.clock.getElapsedTime() * 0.5 + position[2]) * 0.08 - 0.15;
     }
-    state.invalidate();
   });
 
   return (

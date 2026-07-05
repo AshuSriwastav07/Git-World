@@ -118,7 +118,6 @@ export function LanguageDistrict({ language, color, position, developers }: Lang
     for (const lamp of lampRefs.current) {
       if (lamp) lamp.intensity = night ? 2 : 0;
     }
-    state.invalidate();
   });
 
   const bannerTex = useMemo(() => {

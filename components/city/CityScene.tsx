@@ -1,7 +1,8 @@
 // CityScene — R3F Canvas with proper day/night lighting
 'use client';
 
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { useEffect } from 'react';
 import { AdaptiveDpr } from '@react-three/drei';
 import { SkyEnvironment } from './environment/SkyEnvironment';
 import { Suspense, useRef, useCallback, lazy } from 'react';
@@ -29,6 +30,34 @@ function ReadySignal({ onReady }: { onReady: () => void }) {
       state.invalidate();
     }
   });
+  return null;
+}
+
+/**
+ * AmbientDriver — the ONLY source of frames for ambient/decorative animation.
+ * Requests frames at a capped 30 Hz (characters, banners, monuments, sky).
+ * Previously ~25 components each called state.invalidate() unconditionally in
+ * useFrame, which defeated frameloop="demand" AND pushed the render loop to
+ * uncapped max rate. Interaction (OrbitControls change events, flight/swing
+ * modes, intro rise) still invalidates at full refresh rate on top of this.
+ * Pauses entirely when the tab is hidden.
+ */
+const AMBIENT_INTERVAL_MS = 33; // ~30 Hz
+function AmbientDriver() {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (id === null) id = setInterval(() => invalidate(), AMBIENT_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (id !== null) { clearInterval(id); id = null; }
+    };
+    const onVis = () => (document.hidden ? stop() : start());
+    document.addEventListener('visibilitychange', onVis);
+    start();
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
+  }, [invalidate]);
   return null;
 }
 
@@ -79,6 +108,9 @@ function SceneContent({ onReady }: { onReady?: () => void }) {
 
       {/* Camera controller */}
       <CameraController />
+
+      {/* Ambient animation clock — capped 30 Hz */}
+      <AmbientDriver />
 
       {/* Dev-only perf stats (?debug=perf) */}
       <PerfOverlay />

@@ -91,11 +91,31 @@ function DevCharacterInner({
 
   const walkState = useRef({ idx: 0, progress: 0 });
   const lookUpTimer = useRef(seed % 1000);
+  const lodState = useRef({ vec: new THREE.Vector3(), lastCheck: 0, hidden: false, frozen: false });
 
   const isWalking = behavior === 1 || behavior === 4;
   const isSitting = behavior === 0 || behavior === 2 || behavior === 6;
 
   useFrame((state, dt) => {
+    /* ── LOD gate: characters are sub-pixel at overview zoom.
+       > HIDE_DIST: fully invisible (no draw calls for ~15 meshes each).
+       > FREEZE_DIST: visible but static (skip all animation work).
+       Distance re-checked every ~150 ms, not every frame. ── */
+    const lod = lodState.current;
+    const g = groupRef.current;
+    if (g) {
+      const now = state.clock.elapsedTime;
+      if (now - lod.lastCheck > 0.15) {
+        lod.lastCheck = now;
+        g.getWorldPosition(lod.vec);
+        const d2 = lod.vec.distanceToSquared(state.camera.position);
+        lod.hidden = d2 > 6400;   // > 80 units — hide entirely
+        lod.frozen = d2 > 2025;   // > 45 units — draw but don't animate
+        if (g.visible === lod.hidden) g.visible = !lod.hidden;
+      }
+      if (lod.hidden || lod.frozen) return;
+    }
+
     const time = state.clock.getElapsedTime();
     const ph = (seed % 100) / 10;
 
@@ -208,7 +228,6 @@ function DevCharacterInner({
     if (deskLightRef.current) {
       deskLightRef.current.intensity = night ? 0.5 : 0;
     }
-    state.invalidate();
   });
 
   const handleClick = (e: { stopPropagation: () => void }) => {
