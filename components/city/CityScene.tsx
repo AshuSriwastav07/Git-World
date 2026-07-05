@@ -1,8 +1,7 @@
 // CityScene — R3F Canvas with proper day/night lighting
 'use client';
 
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { AdaptiveDpr } from '@react-three/drei';
 import { SkyEnvironment } from './environment/SkyEnvironment';
 import { Suspense, useRef, useCallback, lazy } from 'react';
@@ -18,7 +17,6 @@ const TechPark = lazy(() => import('./TechPark').then(m => ({ default: m.TechPar
 const SiliconValleyPark = lazy(() => import('./SiliconValleyPark').then(m => ({ default: m.SiliconValleyPark })));
 const TrendingDistrict = lazy(() => import('./TrendingDistrict').then(m => ({ default: m.TrendingDistrict })));
 const AirplaneMode = lazy(() => import('./airplane/AirplaneMode').then(m => ({ default: m.AirplaneMode })));
-const SpiderManMode = lazy(() => import('./spiderman/SpiderManMode').then(m => ({ default: m.SpiderManMode })));
 
 /** Fires onReady after first frame renders — stops invalidating afterwards */
 function ReadySignal({ onReady }: { onReady: () => void }) {
@@ -33,37 +31,8 @@ function ReadySignal({ onReady }: { onReady: () => void }) {
   return null;
 }
 
-/**
- * AmbientDriver — the ONLY source of frames for ambient/decorative animation.
- * Requests frames at a capped 30 Hz (characters, banners, monuments, sky).
- * Previously ~25 components each called state.invalidate() unconditionally in
- * useFrame, which defeated frameloop="demand" AND pushed the render loop to
- * uncapped max rate. Interaction (OrbitControls change events, flight/swing
- * modes, intro rise) still invalidates at full refresh rate on top of this.
- * Pauses entirely when the tab is hidden.
- */
-const AMBIENT_INTERVAL_MS = 33; // ~30 Hz
-function AmbientDriver() {
-  const invalidate = useThree((s) => s.invalidate);
-  useEffect(() => {
-    let id: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (id === null) id = setInterval(() => invalidate(), AMBIENT_INTERVAL_MS);
-    };
-    const stop = () => {
-      if (id !== null) { clearInterval(id); id = null; }
-    };
-    const onVis = () => (document.hidden ? stop() : start());
-    document.addEventListener('visibilitychange', onVis);
-    start();
-    return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
-  }, [invalidate]);
-  return null;
-}
-
 function SceneContent({ onReady }: { onReady?: () => void }) {
   const flightMode = useCityStore((s) => s.flightMode);
-  const spiderMode = useCityStore((s) => s.activeMode === 'spiderman');
 
   return (
     <>
@@ -96,21 +65,11 @@ function SceneContent({ onReady }: { onReady?: () => void }) {
       {/* Airplane */}
       {flightMode && <AirplaneMode />}
 
-      {/* Spider-Man street traversal */}
-      {spiderMode && (
-        <SceneErrorBoundary name="SpiderManMode">
-          <SpiderManMode />
-        </SceneErrorBoundary>
-      )}
-
       {/* Spotlight on selected building */}
       <GodRaySpotlight />
 
       {/* Camera controller */}
       <CameraController />
-
-      {/* Ambient animation clock — capped 30 Hz */}
-      <AmbientDriver />
 
       {/* Dev-only perf stats (?debug=perf) */}
       <PerfOverlay />

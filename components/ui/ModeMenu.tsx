@@ -16,7 +16,6 @@ interface ModeButton {
 const MODES: ModeButton[] = [
   { mode: 'explore', name: 'EXPLORE', icon: '🏙️', tooltip: 'Explore City' },
   { mode: 'fly', name: 'FLY', icon: '✈️', tooltip: 'Fly Over City' },
-  { mode: 'spiderman', name: 'SWING', icon: '🕸️', tooltip: 'Swing Through Streets' },
   { mode: 'trending', name: 'TRENDING', icon: '📊', tooltip: 'Trending Repos' },
   { mode: 'search', name: 'SEARCH', icon: '🔍', tooltip: 'Find Building' },
   { mode: 'leaderboard', name: 'RANKS', icon: '🏆', tooltip: 'Leaderboard' },

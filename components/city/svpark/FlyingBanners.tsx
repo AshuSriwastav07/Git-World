@@ -130,6 +130,7 @@ export function FlyingBanners() {
       m.getWorldPosition(_worldPos);
       m.lookAt(camera.position);
     }
+    state.invalidate();
   });
 
   const handleCreatorClick = () => {

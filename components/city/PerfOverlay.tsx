@@ -13,20 +13,12 @@ export function isPerfDebugEnabled(): boolean {
 
 export function PerfOverlay() {
   const gl = useThree((s) => s.gl);
-  const scene = useThree((s) => s.scene);
   const [enabled, setEnabled] = useState(false);
   const elRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setEnabled(isPerfDebugEnabled());
   }, []);
-
-  // Debug hook: expose the scene graph for external profiling (?debug=perf only)
-  useEffect(() => {
-    if (!enabled) return;
-    (window as unknown as Record<string, unknown>).__v0Scene = scene;
-    return () => { delete (window as unknown as Record<string, unknown>).__v0Scene; };
-  }, [enabled, scene]);
 
   useEffect(() => {
     if (!enabled) return;

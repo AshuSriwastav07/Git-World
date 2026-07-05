@@ -81,6 +81,7 @@ export function CompanySector({ config, developers }: CompanySectorProps) {
     if (nightLightRef.current) {
       nightLightRef.current.intensity = useCityStore.getState().isNight ? 2 : 0;
     }
+    state.invalidate();
   });
 
   return (

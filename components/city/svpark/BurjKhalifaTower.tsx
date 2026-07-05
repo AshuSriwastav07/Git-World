@@ -109,6 +109,7 @@ export function BurjKhalifaTower() {
       const t = state.clock.getElapsedTime();
       tipLightRef.current.intensity = 0.5 + Math.sin(t * Math.PI) * 0.5;
     }
+    state.invalidate();
   });
 
   return (

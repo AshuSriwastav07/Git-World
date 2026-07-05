@@ -28,6 +28,7 @@ export function RepoCrown({ color, y }: RepoCrownProps) {
     if (groupRef.current) {
       groupRef.current.rotation.y = _sharedRotation;
     }
+    state.invalidate();
   });
 
   return (

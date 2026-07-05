@@ -34,6 +34,7 @@ export function CentralPlaza() {
     if (orbLightRef.current) {
       orbLightRef.current.color.copy(blended);
     }
+    state.invalidate();
   });
 
   return (

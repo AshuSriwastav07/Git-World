@@ -57,6 +57,7 @@ function SpotlightBeam({ x, z, height, width, depth }: { x: number; z: number; h
       coneRef.current.rotation.y = t * 2;
       coneRef.current.position.y = height + 3 + Math.sin(t * 3) * 0.5;
     }
+    state.invalidate();
   });
 
   const BEAM_H = 250;

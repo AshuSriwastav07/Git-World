@@ -21,21 +21,6 @@ const MAX_BUILDINGS = 8000;
 /* ── Window color palette per building ── */
 const WINDOW_COLORS = ['#ff3333', '#33ff33', '#ffdd33', '#ffffff', '#3399ff', '#222222'];
 
-/* ── Activity glow: windows glow brighter for recently active users.
-   Brightness is baked into instanceColor at build time (zero per-frame cost).
-   recentActivity comes from GitHub events — tiers are relative:
-     hot    (>= 60): 1.6x warm-gold boosted windows
-     active (>= 20): 1.25x brightness
-     normal (>   0): 1.0x
-     dormant  (= 0): 0.45x — dark, sleepy building ── */
-const HOT_TINT = new THREE.Color('#ffd980');
-function activityBrightness(recentActivity: number): number {
-  if (recentActivity >= 60) return 1.6;
-  if (recentActivity >= 20) return 1.25;
-  if (recentActivity > 0) return 1.0;
-  return 0.45;
-}
-
 /* ── Easing: slight overshoot for "pop-up" feel ── */
 function easeOutBack(t: number): number {
   const c1 = 1.70158;
@@ -489,12 +474,7 @@ export function CityGrid() {
       dummy.updateMatrix();
       glow.setMatrixAt(count, dummy.matrix);
 
-      /* Window color, modulated by recent user activity (glow tiers) */
       color.set(WINDOW_COLORS[count % WINDOW_COLORS.length]);
-      const act = user.recentActivity ?? 0;
-      const bright = activityBrightness(act);
-      if (act >= 60) color.lerp(HOT_TINT, 0.5); // hot users get a warm gold cast
-      color.multiplyScalar(bright);
       body.setColorAt(count, color);
       glow.setColorAt(count, color);
 

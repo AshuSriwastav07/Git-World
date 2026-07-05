@@ -82,6 +82,7 @@ function PromoPlane({ config }: { config: PromoPlaneConfig }) {
     if (propRef.current) {
       propRef.current.rotation.z += 0.4;
     }
+    state.invalidate();
   });
 
   return (

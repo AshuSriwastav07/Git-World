@@ -16,6 +16,7 @@ function PythonHelix({ color, isNight }: { color: string; isNight: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
   useFrame((state) => {
     if (groupRef.current) groupRef.current.rotation.y = state.clock.getElapsedTime() * 0.15;
+    state.invalidate();
   });
 
   const blocks: { pos: [number, number, number]; strand: number }[] = [];
@@ -58,6 +59,7 @@ function JSCube({ color, isNight }: { color: string; isNight: boolean }) {
       meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.3;
       meshRef.current.position.y = 4 + Math.sin(state.clock.getElapsedTime() * 0.8) * 0.3;
     }
+    state.invalidate();
   });
 
   return (
@@ -93,6 +95,7 @@ function TSCube({ color, isNight }: { color: string; isNight: boolean }) {
       meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.25;
       meshRef.current.position.y = 4 + Math.sin(state.clock.getElapsedTime() * 0.7) * 0.3;
     }
+    state.invalidate();
   });
 
   return (
@@ -136,6 +139,7 @@ function JavaCoffeeCup({ color, isNight }: { color: string; isNight: boolean }) 
         (mesh.material as THREE.MeshLambertMaterial).opacity = Math.max(0, 1 - (t % 2) / 2);
       });
     }
+    state.invalidate();
   });
 
   return (
@@ -187,6 +191,7 @@ function RustGear({ color, isNight }: { color: string; isNight: boolean }) {
   const gearRef = useRef<THREE.Group>(null);
   useFrame((state) => {
     if (gearRef.current) gearRef.current.rotation.z = state.clock.getElapsedTime() * 0.2;
+    state.invalidate();
   });
 
   const TEETH = 8;
@@ -366,6 +371,7 @@ function KotlinDiamond({ color, isNight }: { color: string; isNight: boolean }) 
       diamondRef.current.rotation.y = state.clock.getElapsedTime() * 0.4;
       diamondRef.current.position.y = 5 + Math.sin(state.clock.getElapsedTime() * 0.6) * 0.4;
     }
+    state.invalidate();
   });
 
   return (

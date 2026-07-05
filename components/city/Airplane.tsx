@@ -219,6 +219,7 @@ export function Airplane() {
     // Blink
     s.blinkTimer += dt;
     if (s.blinkTimer > 0.8) { s.blinkTimer = 0; s.blinkOn = !s.blinkOn; }
+    _state.invalidate();
   });
 
   return (
