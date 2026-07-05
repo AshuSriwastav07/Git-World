@@ -11,6 +11,7 @@ import { CityGrid } from './CityGrid';
 import CameraController from './CameraController';
 import GodRaySpotlight from './GodRaySpotlight';
 import { SceneErrorBoundary } from './SceneErrorBoundary';
+import { PerfOverlay } from './PerfOverlay';
 
 const TechPark = lazy(() => import('./TechPark').then(m => ({ default: m.TechPark })));
 const SiliconValleyPark = lazy(() => import('./SiliconValleyPark').then(m => ({ default: m.SiliconValleyPark })));
@@ -69,6 +70,9 @@ function SceneContent({ onReady }: { onReady?: () => void }) {
 
       {/* Camera controller */}
       <CameraController />
+
+      {/* Dev-only perf stats (?debug=perf) */}
+      <PerfOverlay />
     </>
   );
 }
