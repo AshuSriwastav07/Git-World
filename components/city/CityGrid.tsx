@@ -138,21 +138,43 @@ function ConnectorRoads() {
         <meshLambertMaterial color="#13171c" />
       </mesh>
 
-      {/* Dashed lane markers */}
-      {Array.from({ length: 10 }).map((_, i) => (
-        <mesh key={`lane-top-${i}`} position={[0, 0.05, -52 + i * 2.8]}>
-          <boxGeometry args={[0.9, 0.02, 1.4]} />
-          <meshBasicMaterial color="#c8d0d8" />
-        </mesh>
-      ))}
-      {Array.from({ length: 24 }).map((_, i) => (
-        <mesh key={`lane-bottom-${i}`} position={[0, 0.05, 28 + i * 3.4]}>
-          <boxGeometry args={[0.9, 0.02, 1.7]} />
-          <meshBasicMaterial color="#c8d0d8" />
-        </mesh>
-      ))}
+      {/* Dashed lane markers — single instanced mesh (1 draw call, was 34) */}
+      <LaneMarkers />
     </group>
   );
+}
+
+function LaneMarkers() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const geo = useMemo(() => new THREE.BoxGeometry(0.9, 0.02, 1), []);
+  const mat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#c8d0d8' }), []);
+
+  useEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const dummy = new THREE.Object3D();
+    let i = 0;
+    for (let n = 0; n < 10; n++) {
+      dummy.position.set(0, 0.05, -52 + n * 2.8);
+      dummy.scale.set(1, 1, 1.4);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i++, dummy.matrix);
+    }
+    for (let n = 0; n < 24; n++) {
+      dummy.position.set(0, 0.05, 28 + n * 3.4);
+      dummy.scale.set(1, 1, 1.7);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i++, dummy.matrix);
+    }
+    mesh.count = i;
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, []);
+
+  useEffect(() => () => { geo.dispose(); mat.dispose(); }, [geo, mat]);
+
+  return <instancedMesh ref={ref} args={[geo, mat, 34]} raycast={() => null} />;
 }
 
 /* ── Street lamp — no React state subscription, materials updated imperatively ── */
@@ -187,15 +209,69 @@ function getSharedGlowMat() {
   return _sharedGlowMat;
 }
 
-function StreetLight({ position }: { position: [number, number, number] }) {
-  const lampMat = useMemo(getSharedLampMat, []);
-  const glowMat = useMemo(getSharedGlowMat, []);
+/* ── Instanced street lamps: N lamps × 4 parts → exactly 4 draw calls total ──
+   Parts per lamp (relative to base position): pole, arm, lamp cube, glow sphere. */
+const LAMP_PARTS: {
+  offset: [number, number, number];
+  geo: 'box' | 'sphere';
+  size: [number, number, number] | number;
+}[] = [
+  { offset: [0, 2, 0],     geo: 'box',    size: [0.25, 4, 0.25] }, // pole
+  { offset: [0.5, 4, 0],   geo: 'box',    size: [1, 0.2, 0.2] },   // arm
+  { offset: [1, 3.7, 0],   geo: 'box',    size: [0.6, 0.6, 0.6] }, // lamp
+  { offset: [1, 3.7, 0],   geo: 'sphere', size: 1.8 },              // glow
+];
+
+let _sharedPoleMat: THREE.MeshLambertMaterial | null = null;
+function getSharedPoleMat() {
+  if (!_sharedPoleMat) _sharedPoleMat = new THREE.MeshLambertMaterial({ color: '#555555' });
+  return _sharedPoleMat;
+}
+
+function InstancedStreetLights({ positions }: { positions: [number, number, number][] }) {
+  const refs = useRef<(THREE.InstancedMesh | null)[]>([null, null, null, null]);
+
+  const geos = useMemo(() => LAMP_PARTS.map((p) =>
+    p.geo === 'sphere'
+      ? new THREE.SphereGeometry(p.size as number, 8, 8)
+      : new THREE.BoxGeometry(...(p.size as [number, number, number]))
+  ), []);
+
+  const mats = useMemo(() => [
+    getSharedPoleMat(), getSharedPoleMat(), getSharedLampMat(), getSharedGlowMat(),
+  ], []);
+
+  useEffect(() => {
+    const dummy = new THREE.Object3D();
+    for (let part = 0; part < LAMP_PARTS.length; part++) {
+      const mesh = refs.current[part];
+      if (!mesh) continue;
+      const [ox, oy, oz] = LAMP_PARTS[part].offset;
+      for (let i = 0; i < positions.length; i++) {
+        const [px, py, pz] = positions[i];
+        dummy.position.set(px + ox, py + oy, pz + oz);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+      }
+      mesh.count = positions.length;
+      mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+    }
+  }, [positions]);
+
+  useEffect(() => () => { geos.forEach((g) => g.dispose()); }, [geos]);
+
   return (
-    <group position={position}>
-      <mesh position={[0, 2, 0]}><boxGeometry args={[0.25, 4, 0.25]} /><meshLambertMaterial color="#555555" /></mesh>
-      <mesh position={[0.5, 4, 0]}><boxGeometry args={[1, 0.2, 0.2]} /><meshLambertMaterial color="#555555" /></mesh>
-      <mesh position={[1, 3.7, 0]}><boxGeometry args={[0.6, 0.6, 0.6]} /><primitive object={lampMat} attach="material" /></mesh>
-      <mesh position={[1, 3.7, 0]}><sphereGeometry args={[1.8, 8, 8]} /><primitive object={glowMat} attach="material" /></mesh>
+    <group>
+      {LAMP_PARTS.map((_, part) => (
+        <instancedMesh
+          key={part}
+          ref={(m) => { refs.current[part] = m; }}
+          args={[geos[part], mats[part], positions.length]}
+          raycast={() => null}
+        />
+      ))}
     </group>
   );
 }
@@ -623,18 +699,49 @@ export function CityGrid() {
     }
   }, [selectUser, introStage, isRealClick]);
 
-  /* ── Hover preload: pre-fetch profile data on hover ── */
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    if (e.instanceId === undefined) return;
-    const login = loginsByInstance.current[e.instanceId];
-    if (!login) return;
-    hoverTimer.current = setTimeout(() => preloadProfile(login), 300);
+  /* ── Hover preload: throttled manual raycast (max ~5/sec, only when pointer moved).
+     Replaces onPointerOver/onPointerOut on the InstancedMesh, which forced R3F to
+     raycast all 8,000 instances on EVERY pointermove. ── */
+  const hoverState = useRef({
+    ndc: new THREE.Vector2(),
+    moved: false,
+    lastCast: 0,
+    lastLogin: null as string | null,
+    raycaster: new THREE.Raycaster(),
+  });
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const h = hoverState.current;
+      h.ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      h.moved = true;
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
   }, []);
-  const handlePointerOut = useCallback(() => {
-    if (hoverTimer.current) { clearTimeout(hoverTimer.current); hoverTimer.current = null; }
-  }, []);
+
+  useFrame(({ camera }) => {
+    const h = hoverState.current;
+    if (!h.moved) return;
+    const now = performance.now();
+    if (now - h.lastCast < 200) return; // max 5 casts/sec
+    h.lastCast = now;
+    h.moved = false;
+
+    const body = bodyRef.current;
+    if (!body) return;
+    h.raycaster.setFromCamera(h.ndc, camera);
+    h.raycaster.firstHitOnly = true as never;
+    const hits = h.raycaster.intersectObject(body, false);
+    const instanceId = hits.length > 0 ? hits[0].instanceId : undefined;
+    const login = instanceId !== undefined ? loginsByInstance.current[instanceId] ?? null : null;
+    if (login && login !== h.lastLogin) {
+      h.lastLogin = login;
+      preloadProfile(login);
+    } else if (!login) {
+      h.lastLogin = null;
+    }
+  });
 
   /* ── Ground ── */
   const groundSize = getGroundSize(sortedLogins.length);
@@ -668,8 +775,8 @@ export function CityGrid() {
       {/* Connector roads between parks (never inside park interiors) */}
       <ConnectorRoads />
 
-      {/* Street Lights */}
-      {streetLights.map((pos, i) => <StreetLight key={`sl-${i}`} position={pos} />)}
+      {/* Street Lights — 4 instanced draw calls for all lamps */}
+      <InstancedStreetLights positions={streetLights} />
 
       {/* Building bodies — InstancedMesh */}
       <instancedMesh
@@ -677,13 +784,11 @@ export function CityGrid() {
         args={[boxGeo, dayBodyMat, MAX_BUILDINGS]}
         onPointerDown={handlePointerDown}
         onClick={handleClick}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
         frustumCulled={false}
       />
 
       {/* Glow shells — InstancedMesh */}
-      <instancedMesh ref={glowRef} args={[boxGeo, dayGlowMat, MAX_BUILDINGS]} frustumCulled={false} renderOrder={0} />
+      <instancedMesh ref={glowRef} args={[boxGeo, dayGlowMat, MAX_BUILDINGS]} frustumCulled={false} renderOrder={0} raycast={() => null} />
 
       {/* Selection ring */}
       <SelectionRing />

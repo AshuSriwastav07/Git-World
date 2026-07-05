@@ -18,15 +18,15 @@ const SiliconValleyPark = lazy(() => import('./SiliconValleyPark').then(m => ({ 
 const TrendingDistrict = lazy(() => import('./TrendingDistrict').then(m => ({ default: m.TrendingDistrict })));
 const AirplaneMode = lazy(() => import('./airplane/AirplaneMode').then(m => ({ default: m.AirplaneMode })));
 
-/** Fires onReady after first frame renders */
+/** Fires onReady after first frame renders — stops invalidating afterwards */
 function ReadySignal({ onReady }: { onReady: () => void }) {
   const fired = useRef(false);
   useFrame((state) => {
     if (!fired.current) {
       fired.current = true;
       onReady();
+      state.invalidate();
     }
-    state.invalidate();
   });
   return null;
 }
@@ -112,7 +112,8 @@ export default function CityScene({ onReady }: { onReady?: () => void }) {
         flat
         gl={{
           antialias: false,
-          logarithmicDepthBuffer: true,
+          // logarithmicDepthBuffer removed: near 0.5 / far 2500 is fine for a
+          // 24-bit depth buffer and log depth costs per-fragment math + kills early-Z
           powerPreference: 'high-performance',
           stencil: false,
           depth: true,

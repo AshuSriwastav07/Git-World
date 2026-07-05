@@ -209,8 +209,13 @@ export default function CameraController() {
       if (anim.progress >= 1) { anim.active = false; setFlyTarget(null); }
     }
 
-    // demand mode — always request next frame (camera may be auto-rotating or damping)
-    state.invalidate();
+    // demand mode — request next frame only while something camera-driven animates.
+    // (drei's OrbitControls invalidates on its own 'change' events for drag/damping.)
+    const cameraAnimating =
+      !userInteracted ||            // auto-rotate active
+      anim.active ||                // fly-to in progress
+      keysPressed.current.size > 0; // WASD pan held
+    if (cameraAnimating) state.invalidate();
   });
 
   if (flightMode) return null;
