@@ -14,6 +14,7 @@ import {
 } from '@/lib/cityLayout';
 import { LANGUAGE_COLORS } from '@/lib/textureGenerator';
 import { preloadProfile } from '@/components/ui/ProfileModal';
+import { clearCityIndex, indexBuilding, getBuildingsNear } from '@/lib/cityIndex';
 
 const MAX_BUILDINGS = 8000;
 
@@ -283,6 +284,8 @@ export function CityGrid() {
 
   const loginsByInstance = useRef<string[]>([]);
   const instanceCount = useRef(0);
+  /* Instance indexes currently hidden by selection (delta updates) */
+  const hiddenInstances = useRef<Set<number>>(new Set());
   /* Store per-building data for rise animation */
   const buildingData = useRef<{ pos: THREE.Vector3; width: number; height: number; depth: number; dist: number }[]>([]);
 
@@ -362,18 +365,7 @@ export function CityGrid() {
 
     const isDone = introStage === 'done' || introStage === 'buttons';
 
-    /* Pre-calculate selected building position for nearby-hiding */
-    const HIDE_RADIUS = 18; // world units — buildings within this radius of selected are hidden
-    let selPos: { x: number; z: number } | null = null;
-    let selLogin: string | null = null;
-    if (selectedUser) {
-      const idx = sortedLogins.indexOf(selectedUser.login.toLowerCase());
-      const rank = idx >= 0 ? idx + 1 : (selectedUser.cityRank ?? 1);
-      const slot = selectedUser.citySlot ?? (rank - 1);
-      const p = slotToWorld(slot);
-      selPos = { x: p.x, z: p.z };
-      selLogin = selectedUser.login.toLowerCase();
-    }
+    clearCityIndex();
 
     sortedLogins.forEach((login, index) => {
       const user = users.get(login);
@@ -385,28 +377,6 @@ export function CityGrid() {
       const dims = getBuildingDimensions(rank, slot, user);
 
       const dist = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
-
-      /* Hide nearby buildings when one is selected (except the selected one itself) */
-      if (selPos && login !== selLogin) {
-        const dx = pos.x - selPos.x;
-        const dz = pos.z - selPos.z;
-        const distToSel = Math.sqrt(dx * dx + dz * dz);
-        if (distToSel < HIDE_RADIUS && distToSel > 0.1) {
-          // Push a dummy hidden instance (scale 0) to keep index mapping consistent
-          dummy.position.set(pos.x, -1000, pos.z);
-          dummy.scale.set(0, 0, 0);
-          dummy.updateMatrix();
-          body.setMatrixAt(count, dummy.matrix);
-          glow.setMatrixAt(count, dummy.matrix);
-          color.set(WINDOW_COLORS[count % WINDOW_COLORS.length]);
-          body.setColorAt(count, color);
-          glow.setColorAt(count, color);
-          bData.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), width: dims.width, height: dims.height, depth: dims.depth, dist });
-          logins.push(login);
-          count++;
-          return;
-        }
-      }
 
       if (isDone) {
         // Final position — full height
@@ -433,6 +403,15 @@ export function CityGrid() {
       glow.setColorAt(count, color);
 
       bData.push({ pos: new THREE.Vector3(pos.x, 0, pos.z), width: dims.width, height: dims.height, depth: dims.depth, dist });
+      indexBuilding({
+        instanceIndex: count,
+        login,
+        x: pos.x,
+        z: pos.z,
+        width: dims.width,
+        height: dims.height,
+        depth: dims.depth,
+      });
       logins.push(login);
       count++;
     });
@@ -451,7 +430,61 @@ export function CityGrid() {
     loginsByInstance.current = logins;
     instanceCount.current = count;
     buildingData.current = bData;
-  }, [sortedLogins, introStage, selectedUser]); // isNight removed — material swap handles day/night
+    hiddenInstances.current.clear(); // full rebuild resets any selection-hiding
+  }, [sortedLogins, introStage]); // selectedUser removed — selection hiding is a delta update below
+
+  /* ── Delta update: hide neighbors of selected building (≤ ~40 instances, not 8000) ── */
+  const selDummy = useMemo(() => new THREE.Object3D(), []);
+  useEffect(() => {
+    const body = bodyRef.current;
+    const glow = glowRef.current;
+    if (!body || !glow) return;
+    if (introStage !== 'done' && introStage !== 'buttons') return;
+
+    const HIDE_RADIUS = 18;
+    const restoreInstance = (i: number) => {
+      const bd = buildingData.current[i];
+      if (!bd) return;
+      selDummy.position.set(bd.pos.x, bd.height / 2, bd.pos.z);
+      selDummy.scale.set(bd.width, bd.height, bd.depth);
+      selDummy.updateMatrix();
+      body.setMatrixAt(i, selDummy.matrix);
+      selDummy.scale.set(bd.width + 0.35, bd.height + 0.1, bd.depth + 0.35);
+      selDummy.updateMatrix();
+      glow.setMatrixAt(i, selDummy.matrix);
+    };
+    const hideInstance = (i: number) => {
+      selDummy.position.set(0, -1000, 0);
+      selDummy.scale.set(0, 0, 0);
+      selDummy.updateMatrix();
+      body.setMatrixAt(i, selDummy.matrix);
+      glow.setMatrixAt(i, selDummy.matrix);
+    };
+
+    // Restore everything hidden by the previous selection
+    for (const i of hiddenInstances.current) restoreInstance(i);
+    hiddenInstances.current.clear();
+
+    // Hide neighbors of the new selection
+    if (selectedUser) {
+      const selLogin = selectedUser.login.toLowerCase();
+      const idx = sortedLogins.indexOf(selLogin);
+      const rank = idx >= 0 ? idx + 1 : (selectedUser.cityRank ?? 1);
+      const slot = selectedUser.citySlot ?? (rank - 1);
+      const p = slotToWorld(slot);
+      for (const b of getBuildingsNear(p.x, p.z, HIDE_RADIUS)) {
+        if (b.login === selLogin) continue;
+        const dx = b.x - p.x;
+        const dz = b.z - p.z;
+        if (dx * dx + dz * dz <= 0.01) continue;
+        hideInstance(b.instanceIndex);
+        hiddenInstances.current.add(b.instanceIndex);
+      }
+    }
+
+    body.instanceMatrix.needsUpdate = true;
+    glow.instanceMatrix.needsUpdate = true;
+  }, [selectedUser, sortedLogins, introStage, selDummy]);
 
   /* ── Rise animation during cinematic intro ── */
   const RISE_DURATION = 7000; // 7 seconds for all buildings to rise

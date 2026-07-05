@@ -16,35 +16,36 @@ export function sr(seed: number): number {
   return (h >>> 0) / 0xffffffff;
 }
 
-// Slot → spiral grid (gx, gz) coordinates
-function spiralCoords(slot: number): [number, number] {
-  if (slot === 0) return [0, 0];
-  let x = 0, z = 0, dx = 1, dz = 0, steps = 1, stepCount = 0, turns = 0;
-  for (let i = 0; i < slot; i++) {
-    x += dx; z += dz; stepCount++;
-    if (stepCount === steps) {
-      stepCount = 0; turns++;
-      const tmp = dx; dx = -dz; dz = tmp;
-      if (turns % 2 === 0) steps++;
-    }
-  }
-  return [x, z];
-}
-
 // ── Park-aware slot mapping cache ──
 // Builds a list of valid (non-park) world positions in spiral order so that
 // every citySlot index maps to a position outside both Tech Park and SV Park.
+// Uses an INCREMENTAL spiral cursor: the spiral is walked exactly once and the
+// walk state persists between calls — O(n) total instead of O(n²)
+// (previously each probe re-walked the spiral from the origin).
 const _validWorldPos: { x: number; z: number }[] = [];
 let _validPosProbe = 0;
 
+// Persistent spiral cursor state (matches the original spiralCoords walk order)
+const _spiral = { x: 0, z: 0, dx: 1, dz: 0, steps: 1, stepCount: 0, turns: 0 };
+
+function spiralAdvance() {
+  _spiral.x += _spiral.dx; _spiral.z += _spiral.dz; _spiral.stepCount++;
+  if (_spiral.stepCount === _spiral.steps) {
+    _spiral.stepCount = 0; _spiral.turns++;
+    const tmp = _spiral.dx; _spiral.dx = -_spiral.dz; _spiral.dz = tmp;
+    if (_spiral.turns % 2 === 0) _spiral.steps++;
+  }
+}
+
 function ensureValidPositions(needed: number) {
   while (_validWorldPos.length < needed && _validPosProbe < 20000) {
-    const [gx, gz] = spiralCoords(_validPosProbe);
-    const wx = gx * SLOT_PITCH;
-    const wz = gz * SLOT_PITCH;
+    // Cursor currently holds coords for probe index _validPosProbe
+    const wx = _spiral.x * SLOT_PITCH;
+    const wz = _spiral.z * SLOT_PITCH;
     if (!isInsidePark(wx, wz) && !isOnConnectorRoad(wx, wz, 1.5)) {
       _validWorldPos.push({ x: wx, z: wz });
     }
+    spiralAdvance();
     _validPosProbe++;
   }
 }
